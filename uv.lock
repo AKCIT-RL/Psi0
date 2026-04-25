@@ -2248,7 +2248,7 @@ name = "nvidia-cudnn-cu12"
 version = "9.5.1.17"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+    { name = "nvidia-cublas-cu12", marker = "platform_machine != 'aarch64' and sys_platform == 'linux'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2a/78/4535c9c7f859a64781e43c969a3a7e84c54634e319a996d43ef32ce46f83/nvidia_cudnn_cu12-9.5.1.17-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:30ac3869f6db17d170e0e556dd6cc5eee02647abc31ca856634d5a40f82c15b2", size = 570988386, upload-time = "2024-10-25T19:54:26.39Z" },
@@ -2259,7 +2259,7 @@ name = "nvidia-cufft-cu12"
 version = "11.3.0.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "platform_machine != 'aarch64' and sys_platform == 'linux'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8f/16/73727675941ab8e6ffd86ca3a4b7b47065edcca7a997920b831f8147c99d/nvidia_cufft_cu12-11.3.0.4-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:ccba62eb9cef5559abd5e0d54ceed2d9934030f51163df018532142a8ec533e5", size = 200221632, upload-time = "2024-11-20T17:41:32.357Z" },
@@ -2303,6 +2303,13 @@ dependencies = [
     { name = "warp-lang" },
     { name = "wheel" },
     { name = "yourdfpy" },
+]
+
+[package.optional-dependencies]
+isaacsim = [
+    { name = "ninja" },
+    { name = "tomli" },
+    { name = "wheel" },
 ]
 
 [package.metadata]
@@ -2362,9 +2369,9 @@ name = "nvidia-cusolver-cu12"
 version = "11.7.1.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
-    { name = "nvidia-cusparse-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
-    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+    { name = "nvidia-cublas-cu12", marker = "platform_machine != 'aarch64' and sys_platform == 'linux'" },
+    { name = "nvidia-cusparse-cu12", marker = "platform_machine != 'aarch64' and sys_platform == 'linux'" },
+    { name = "nvidia-nvjitlink-cu12", marker = "platform_machine != 'aarch64' and sys_platform == 'linux'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f0/6e/c2cf12c9ff8b872e92b4a5740701e51ff17689c4d726fca91875b07f655d/nvidia_cusolver_cu12-11.7.1.2-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:e9e49843a7707e42022babb9bcfa33c29857a93b88020c4e4434656a655b698c", size = 158229790, upload-time = "2024-11-20T17:43:43.211Z" },
@@ -2376,7 +2383,7 @@ name = "nvidia-cusparse-cu12"
 version = "12.5.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "platform_machine != 'aarch64' and sys_platform == 'linux'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/06/1e/b8b7c2f4099a37b96af5c9bb158632ea9e5d9d27d7391d7eb8fc45236674/nvidia_cusparse_cu12-12.5.4.2-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:7556d9eca156e18184b94947ade0fba5bb47d69cec46bf8660fd2c71a4b48b73", size = 216561367, upload-time = "2024-11-20T17:44:54.824Z" },
@@ -2804,6 +2811,7 @@ serve = [
     { name = "uvicorn" },
 ]
 simple = [
+    { name = "nvidia-curobo", extra = ["isaacsim"] },
     { name = "simple", extra = ["full"] },
 ]
 viz = [
@@ -2859,7 +2867,10 @@ serve = [
     { name = "fastapi" },
     { name = "uvicorn" },
 ]
-simple = [{ name = "simple", extras = ["full"], editable = "third_party/SIMPLE" }]
+simple = [
+    { name = "nvidia-curobo", extras = ["isaacsim"], editable = "third_party/SIMPLE/third_party/curobo" },
+    { name = "simple", extras = ["full"], editable = "third_party/SIMPLE" },
+]
 viz = [
     { name = "transforms3d", specifier = ">=0.4.2" },
     { name = "viser", specifier = ">=1.0.15" },
@@ -2929,11 +2940,11 @@ wheels = [
 
 [[package]]
 name = "pybind11"
-version = "3.0.3"
+version = "3.0.4"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/41/50/b83d65efc1914681f5aded4ce37c703408a9bb74829f27f041560ca52ffb/pybind11-3.0.3.tar.gz", hash = "sha256:00471cdb816882c484708bc5dde80815c8c11cea540ab2cc6410f5ddea434755", size = 587814, upload-time = "2026-03-31T23:42:06.481Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cc/f0/35145a3c3baffeef55d4b8324caa33abaa8fa56ab345ecd4b2211d09163e/pybind11-3.0.4.tar.gz", hash = "sha256:3286b59c8a774b9ee650169302dd5a4eedc30a8617905a0560dd8ee44775130c", size = 589533, upload-time = "2026-04-19T03:08:15.925Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ab/87/99f21e9b20899d6dc1bf7544cfe53e5fa17acc21bb267971a540425357d3/pybind11-3.0.3-py3-none-any.whl", hash = "sha256:fb5f8e4a64946b4dcc0451c83a8c384f803bc0a62dd1ba02f199e97dbc9aad4c", size = 313717, upload-time = "2026-03-31T23:42:04.814Z" },
+    { url = "https://files.pythonhosted.org/packages/b3/06/c3a23c9a0263b136c519f033a58d4641e73065fefc7754e9667ec206d992/pybind11-3.0.4-py3-none-any.whl", hash = "sha256:961720ee652da51d531b7b2451a6bd2bc042b0106e6d9baa48ecb7d58034ce63", size = 314166, upload-time = "2026-04-19T03:08:14.091Z" },
 ]
 
 [[package]]
@@ -3637,7 +3648,6 @@ dependencies = [
     { name = "isaacsim", extra = ["all", "extscache"] },
     { name = "mujoco" },
     { name = "numpy" },
-    { name = "nvidia-curobo" },
     { name = "openpi-client" },
     { name = "python-dotenv" },
     { name = "python-fcl" },
@@ -3672,7 +3682,6 @@ requires-dist = [
     { name = "lerobot", marker = "extra == 'lerobot'", git = "https://github.com/songlin/lerobot.git?rev=09929d8057b044b53aecaf5c6d7eb71f99e8beb9" },
     { name = "mujoco", specifier = "==3.3.6" },
     { name = "numpy", specifier = "==1.26.4" },
-    { name = "nvidia-curobo", editable = "third_party/SIMPLE/third_party/curobo" },
     { name = "openai", marker = "extra == 'active-perception'" },
     { name = "openai", marker = "extra == 'full'" },
     { name = "openpi-client", editable = "third_party/SIMPLE/third_party/openpi-client" },
@@ -3691,13 +3700,10 @@ requires-dist = [
     { name = "trimesh", specifier = ">=4.7.1" },
     { name = "typer-slim", specifier = ">=0.17.3" },
     { name = "warp-lang", marker = "extra == 'full'", specifier = "==1.7.0" },
-    { name = "warp-lang", marker = "extra == 'isaacsim-extra'", specifier = "==1.7.0" },
 ]
-provides-extras = ["rlds", "lerobot", "isaacsim-extra", "active-perception", "full"]
+provides-extras = ["rlds", "lerobot", "active-perception", "full"]
 
 [package.metadata.requires-dev]
-active-perception = [{ name = "openai" }]
-curobo = [{ name = "nvidia-curobo", extras = ["isaacsim"], editable = "third_party/SIMPLE/third_party/curobo" }]
 dev = [
     { name = "black", specifier = ">=25.1.0" },
     { name = "huggingface-hub", extras = ["cli"], specifier = ">=0.18.3" },
@@ -3715,15 +3721,7 @@ docs = [
     { name = "sphinx-copybutton", specifier = ">=0.5.2" },
     { name = "sphinxemoji", specifier = ">=0.2.0" },
 ]
-isaacsim-hotfix = [{ name = "warp-lang", specifier = "==1.7.0" }]
 lerobot = [{ name = "lerobot", git = "https://github.com/songlin/lerobot.git?rev=09929d8057b044b53aecaf5c6d7eb71f99e8beb9" }]
-rlds = [
-    { name = "dm-env", specifier = ">=1.6" },
-    { name = "envlogger", extras = ["tfds"], specifier = ">=1.2" },
-    { name = "protobuf", specifier = "<=3.20.3" },
-    { name = "rlds", extras = ["tensorflow"], specifier = ">=0.1.8" },
-    { name = "tensorflow", specifier = "==2.15.0" },
-]
 sonic = [
     { name = "decoupled-wbc", extras = ["full"], editable = "third_party/SIMPLE/third_party/decoupled_wbc" },
     { name = "gear-sonic", extras = ["sim", "teleop"], editable = "third_party/SIMPLE/third_party/gear_sonic" },

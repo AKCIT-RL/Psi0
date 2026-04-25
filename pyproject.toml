@@ -40,6 +40,7 @@ psi = ["assets/*"]
 [tool.uv.sources]
 psi = { path = ".", editable = true }
 simple = { path = "third_party/SIMPLE", editable = true }
+nvidia-curobo = { path = "third_party/SIMPLE/third_party/curobo", editable = true }
 
 [tool.uv.workspace]
 members = ["packages/*"]
@@ -76,6 +77,7 @@ psi = [
 
 simple = [
    "simple[full]",
+   "nvidia-curobo[isaacsim]",
 ]
 
 [tool.uv.extra-build-dependencies]

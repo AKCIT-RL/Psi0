@@ -57,7 +57,7 @@ Programmatic evaluation uses `simple.evals.api`:
 from simple.evals.api import EvalConfig, EvalRunner
 
 config = EvalConfig(
-    env_id="simple/G1WholebodyXMovePick-v0",
+    env_id="simple/G1WholebodyXMoveAndPickMP-v0",
     policy="hrdt",
     split="train",
     host="localhost",
@@ -84,7 +84,7 @@ SIMPLE exposes datagen as a package CLI:
 
 ```bash
 python -m simple.cli.datagen \
-  simple/G1WholebodyXMovePick-v0 \
+  simple/G1WholebodyXMoveAndPickMP-v0 \
   --sim-mode mujoco_isaac \
   --headless \
   --data-format lerobot \
@@ -105,7 +105,7 @@ Example eval-config generation only:
 
 ```bash
 python -m simple.cli.datagen \
-  simple/G1WholebodyXMovePick-v0 \
+  simple/G1WholebodyXMoveAndPickMP-v0 \
   --sim-mode mujoco_isaac \
   --headless \
   --data-format lerobot \
@@ -120,7 +120,7 @@ SIMPLE also exposes evaluation as a package CLI:
 
 ```bash
 python -m simple.cli.eval \
-  simple/G1WholebodyXMovePick-v0 \
+  simple/G1WholebodyXMoveAndPickMP-v0 \
   hrdt \
   train \
   --host localhost \
@@ -152,7 +152,7 @@ Example EgoVLA eval:
 
 ```bash
 python -m simple.cli.eval \
-  simple/G1WholebodyXMovePick-v0 \
+  simple/G1WholebodyXMoveAndPickMP-v0 \
   egovla \
   train \
   --host localhost \

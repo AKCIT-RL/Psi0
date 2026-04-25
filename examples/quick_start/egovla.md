@@ -56,7 +56,7 @@ cd /path/to/Psi0
 nix develop
 source .venv-psi/bin/activate
 python -m simple.cli.eval \
-  simple/G1WholebodyXMovePick-v0 \
+  simple/G1WholebodyXMoveAndPickMP-v0 \
   egovla \
   train \
   --host localhost \
@@ -82,7 +82,7 @@ source .venv-psi/bin/activate
 
 for level in 0 1 2; do
   CUDA_VISIBLE_DEVICES=0 python -m simple.cli.eval \
-    simple/G1WholebodyXMovePick-v0 \
+    simple/G1WholebodyXMoveAndPickMP-v0 \
     egovla \
     train \
     --host localhost \

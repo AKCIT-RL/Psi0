@@ -66,7 +66,7 @@ export NVCC_PREPEND_FLAGS="-ccbin $(command -v g++)"
 export ACCEPT_EULA=Y
 export OMNI_KIT_ACCEPT_EULA=YES
 python -m simple.cli.eval \
-  simple/G1WholebodyXMovePick-v0 \
+  simple/G1WholebodyXMoveAndPickMP-v0 \
   hrdt \
   train \
   --host localhost \
@@ -100,7 +100,7 @@ export OMNI_KIT_ACCEPT_EULA=YES
 
 for level in 0 1 2; do
   CUDA_VISIBLE_DEVICES=0 python -m simple.cli.eval \
-    simple/G1WholebodyXMovePick-v0 \
+    simple/G1WholebodyXMoveAndPickMP-v0 \
     hrdt \
     train \
     --host localhost \
