@@ -32,7 +32,7 @@ bash src/h_rdt/datasets/pretrain/run_pretrain_pipeline.sh
 python src/fast/download.py
 ```
 
-and patch the original FAST tokenizer to avoid decoding error
+and patch the original FAST tokenizer to avoid decoding error, see the authors's discussion [here](https://huggingface.co/physical-intelligence/fast/discussions/4)
 ```
 python src/fast/patch_pi_action_tokenizer.py
 ```
