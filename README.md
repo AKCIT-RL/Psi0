@@ -1,4 +1,4 @@
-<h1 align="center">Ψ₀: An Open Foundation Model <br/> Towards Universal Humanoid Loco-Manipulation
+<h1 align="center">[RSS26']Ψ₀: An Open Foundation Model <br/> Towards Universal Humanoid Loco-Manipulation
 </h1>
 
 <p align="center">
