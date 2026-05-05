@@ -511,8 +511,8 @@ Download pre-trained `psi-0` VLM backbone
 ```
 python scripts/data/download.py \
   --repo-id=USC-PSI-Lab/psi-model \
-  --remote-dir=pre.fast.egodex.2512241941/pretrained/ckpt_200000 \
-  --local-dir=$PWD/cache/checkpoints/psi0/pre.fast.egodex.2512241941.ckpt200k \
+  --remote-dir=psi0/pre.fast.1by1.2601091803.ckpt.ego200k.he30k \
+  --local-dir=$PSI_HOME/cache/checkpoints/psi0/pre.fast.1by1.2601091803.ckpt.ego200k.he30k \
   --repo-type=model
 ```
 
@@ -548,9 +548,10 @@ and more variants for ablation studies:
 Download the selected models
 
 ```
-hf download USC-PSI-Lab/psi-model \
-  --remote-dir=<remote dictory on huggingface repo>
-  --local-dir=$PSI_HOME/cache/checkpoints \
+python scripts/data/download.py \
+  --repo-id=USC-PSI-Lab/psi-model \
+  --remote-dir=<Remote Directory> \
+  --local-dir=$PSI_HOME/cache/checkpoints/<Remote Directory> \
   --repo-type=model
 ```
 
