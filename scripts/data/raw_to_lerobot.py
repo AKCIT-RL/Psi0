@@ -539,9 +539,9 @@ class HE2LeRobotConverter:
             task_rows.append(
                 {
                     "task_index": ti,
-                    "task": meta.get("name", f"task_{ti:04d}"),
+                    "task": meta.get("description", f"task_{ti:04d}"),
                     "category": meta.get("category", ""),
-                    "description": meta.get("description", ""),
+                    "name": meta.get("name", ""),
                 }
             )
         tasks_df = pd.DataFrame(task_rows).sort_values("task_index").reset_index(drop=True)
