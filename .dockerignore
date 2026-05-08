@@ -1,0 +1,49 @@
+# Ignore large data, model weights, venvs and build artifacts
+.venv*/
+.venv-psi/
+wandb/
+.runs/
+*.log
+__pycache__/
+*.pyc
+*.pyo
+.git/
+node_modules/
+
+# Data directories (mount at runtime)
+pick_cylinder_manipulation_psi/
+data/
+
+# Cached HF models / checkpoints (mount at runtime)
+hfm/
+cache/
+*.ckpt
+*.pt
+*.bin
+*.safetensors
+
+# Third-party submodules not needed for PSI training
+third_party/
+src/gr00t/
+src/egovla/
+src/h_rdt/
+src/InternVLA-M1/
+src/act/
+src/dp/
+src/fast/
+src/openpi/
+src/lerobot_patch/
+
+# Baselines other than psi
+baselines/
+
+# Tests, examples, assets
+tests/
+examples/
+assets/
+nix/
+real/
+
+# Misc
+*.zip
+*.tar.gz
