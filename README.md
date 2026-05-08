@@ -30,9 +30,7 @@ At the top, the $\Psi_0$ model consists of two end-to-end trained components: a 
 </p>
 
 ## Table of Contents
-<!-- - [Installation](#-environment-setup) -->
-<!-- - [Pre- & Post- Training](#-) -->
-<!-- - [Data Pre-Processing](#-) -->
+- [Quick Start — Fine-tune on Your Own Data](#quick-start--fine-tune-ψ₀-on-your-own-data)
 - [Finetune Ψ₀ on Unitree G1 Humanoid Robot](#finetune-psi0)
   - [Installation](#installation)
   - [Data Collection](#data-collection)
@@ -56,6 +54,71 @@ At the top, the $\Psi_0$ model consists of two end-to-end trained components: a 
 - [Checkpoints](#checkpoints)
 - [Troubleshootings](#troubleshootings)
 - [Citation](#️-citation)
+
+---
+
+## Quick Start — Fine-tune Ψ₀ on Your Own Data
+
+The fastest way to fine-tune Ψ₀ on a new task is using the generic LeRobot launcher.
+It validates your dataset, downloads checkpoints automatically, computes hyper-parameters, and launches training.
+
+### Option A: Native (recommended for development)
+
+```bash
+# 1. Install environment
+git clone https://github.com/physical-superintelligence-lab/Psi0.git && cd Psi0
+uv venv .venv-psi --python 3.10 && source .venv-psi/bin/activate
+GIT_LFS_SKIP_SMUDGE=1 uv sync --all-groups --index-strategy unsafe-best-match --active
+uv pip install flash_attn==2.7.4.post1 --no-build-isolation
+
+# 2. Set environment variables
+cp .env.sample .env   # edit PSI_HOME, HF_TOKEN, WANDB_API_KEY, WANDB_ENTITY
+source .env
+
+# 3. Launch fine-tuning on your LeRobot dataset
+./scripts/train/psi0/finetune-lerobot-psi0.sh /path/to/your/dataset my-task-name
+```
+
+The script handles everything — see [scripts/train/psi0/README.md](scripts/train/psi0/README.md) for full details.
+
+### Option B: Docker (zero host dependencies)
+
+```bash
+# 1. Build image (once)
+docker build -t psi0-train -f docker/Dockerfile .
+
+# 2. Run fine-tuning
+docker run --gpus all --rm \
+  -v /path/to/dataset:/workspace/data/my_dataset \
+  -v /path/to/checkpoints:/workspace/checkpoints/cache/checkpoints \
+  -e WANDB_API_KEY=$WANDB_API_KEY \
+  psi0-train my_dataset
+```
+
+See [scripts/train/psi0/README.md](scripts/train/psi0/README.md) for Docker environment variables and volume mounts.
+
+### Dataset format
+
+Your dataset must follow the [LeRobot v2.1](https://github.com/huggingface/lerobot) format:
+
+```
+my_dataset/
+├── data/chunk-000/
+│   ├── episode_000000.parquet
+│   └── ...
+├── videos/chunk-000/egocentric/
+│   ├── episode_000000.mp4
+│   └── ...
+└── meta/
+    ├── info.json
+    ├── episodes.jsonl
+    ├── tasks.jsonl
+    └── stats_psi0.json
+```
+
+Generate `stats_psi0.json` if missing: `python scripts/data/calc_modality_stats.py --task-dir /path/to/dataset`
+
+---
 
 <a id="finetune-psi0"></a>
 ## Finetune Ψ₀ on Unitree G1 Humanoid Robot
@@ -258,11 +321,15 @@ cd src/gr00t
 ./scripts/openloop_eval.sh
 ```
 
+> 📄 **Full fine-tuning guide** (memory optimizations, validation split, WandB, nohup): [baselines/gr00t-n1.6/finetune_gr00t.md](baselines/gr00t-n1.6/finetune_gr00t.md)
+
 <a id="openpi-05"></a>
 
 ### OpenPI $\pi_{0.5}$
 
 Please see more detailed instructions here: [baselines/pi05](baselines/pi05/README.md).
+
+> 📄 **Fine-tuning guide for new tasks** (environment setup, config, training, serving): [FINETUNE_PI05.md](FINETUNE_PI05.md)
 
 ### InternVLA-M1
 Install the env 

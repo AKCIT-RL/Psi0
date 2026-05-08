@@ -25,6 +25,9 @@ runs_old/
 tmp_dir/
 .runs*
 
+# Example / demo datasets (mount at runtime, do not commit)
+pick_cylinder_manipulation_psi/
+
 
 .env
 .env.local
