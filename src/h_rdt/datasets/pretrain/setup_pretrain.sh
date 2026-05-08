@@ -4,11 +4,11 @@
 # Set your paths here
 
 # Required paths - modify these according to your environment
-export EGODEX_DATA_ROOT="/share/hongzhe/datasets/egodex"
+export EGODEX_DATA_ROOT="/hfm/data/egodex/sample"
 export T5_MODEL_PATH="/data/lingxuan/weights/t5-v1_1-xxl"
 
 # Project structure (auto-detected)
-export HRDT_PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+export HRDT_PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." && pwd)"
 export HRDT_CONFIG_PATH="${HRDT_PROJECT_ROOT}/configs/hrdt_pretrain.yaml"
 export HRDT_OUTPUT_DIR="${HRDT_PROJECT_ROOT}/datasets/pretrain"
 

@@ -18,12 +18,18 @@ export LARGE_VALUES_LOG="${HRDT_OUTPUT_DIR}/egodex_large_values.txt"
 echo "Starting pretrain data processing pipeline..."
 echo "Data Root: $EGODEX_DATA_ROOT"
 echo "Output Dir: $HRDT_OUTPUT_DIR"
+echo "force_overwrite: $FORCE_OVERWRITE"
 
 # Step 1: Precompute 48D actions
-echo "Step 1: Precomputing 48D actions..."
+echo "Step 1: Precomputing 48d actions..."
+# echo python datasets/pretrain/precompute_48d_actions.py \
+#     --data_root \"$EGODEX_DATA_ROOT\" \
+#     --num_processes \"$NUM_PROCESSES\" \
+#     $([ "$FORCE_OVERWRITE" = "true" ] && echo "--force_overwrite")
+
 python datasets/pretrain/precompute_48d_actions.py \
     --data_root "$EGODEX_DATA_ROOT" \
-    --num_processes "$NUM_PROCESSES" \
+    --num_processes $NUM_PROCESSES \
     $([ "$FORCE_OVERWRITE" = "true" ] && echo "--force_overwrite")
 
 # Step 2: Calculate statistics
@@ -31,15 +37,17 @@ echo "Step 2: Calculating dataset statistics..."
 python datasets/pretrain/calc_stat.py \
     --data_root "$EGODEX_DATA_ROOT" \
     --output_path "$STATS_OUTPUT_PATH" \
-    --large_values_log "$LARGE_VALUES_LOG"
+    --large_values_log "$LARGE_VALUES_LOG" \
+    --use_delta_actions \
+    --upsample_rate 3
 
-# Step 3: Encode language embeddings
-echo "Step 3: Encoding language embeddings..."
-python datasets/pretrain/encode_lang_batch.py
+# Step 3: Encode language embeddings (DONT NEED in PSI0)
+# echo "Step 3: Encoding language embeddings..."
+# python datasets/pretrain/encode_lang_batch.py
 
 echo "Pretrain pipeline completed!"
 echo "Generated files:"
-echo "  - 48D action data: Added to HDF5 files as 'actions_48d' key"
+echo "  - 48d action data: Added to HDF5 files as 'actions_48d' key"
 echo "  - Statistics: $STATS_OUTPUT_PATH"
 echo "  - Large values log: $LARGE_VALUES_LOG"
 echo "  - Language embeddings: *.pt files alongside HDF5 files" 

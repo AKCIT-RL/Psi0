@@ -424,7 +424,7 @@ if __name__ == "__main__":
     
     parser.add_argument('--use_delta_actions', action='store_true',
                        help='Whether to convert actions to delta action representation before calculating statistics')
-    parser.add_argument("--upsample_rate", type=int, default=6,
+    parser.add_argument("--upsample_rate", type=int, default=3,
                         help="Upsample rate for action sequence") # default 30 hz
     
     args = parser.parse_args()

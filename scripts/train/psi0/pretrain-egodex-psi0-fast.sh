@@ -14,7 +14,7 @@ args="pretrain_egodex_qwen3vl_config \
 model.action-tokenizer:fast \
 --seed=7 \
 --exp=pre \
---timestamp=$(date +"%y%m%d%H%M") \
+--timestamp=202502311008 \
 --train.name=pretrain \
 --train.data_parallel=deepspeed \
 --train.deepspeed_config=scripts/deepspeed/zero3.json \

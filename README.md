@@ -1,4 +1,4 @@
-<h1 align="center">[RSS26']Ψ₀: An Open Foundation Model <br/> Towards Universal Humanoid Loco-Manipulation
+<h1 align="center">[RSS26'] Ψ₀: An Open Foundation Model <br/> Towards Universal Humanoid Loco-Manipulation
 </h1>
 
 <p align="center">
@@ -143,13 +143,32 @@ Set up the $\Psi_0$ environment:
 ```
 uv venv .venv-psi --python 3.10
 source .venv-psi/bin/activate
+GIT_LFS_SKIP_SMUDGE=1 uv sync \
+  --group serve \
+  --group viz \
+  --group psi \
+  --index-strategy unsafe-best-match \
+  --active
+uv pip install flash_attn==2.7.4.post1 --no-build-isolation
+```
+
+> If you want to support `SIMPLE` evaluation, you can use the following commands to install `SIMPLE` along with `Psi0`. See also [quickstart](examples/quick_start/psi.md).
+
+```
+git submodule update --init --recursive
 GIT_LFS_SKIP_SMUDGE=1 uv sync --all-groups --index-strategy unsafe-best-match --active
 uv pip install flash_attn==2.7.4.post1 --no-build-isolation
+UV_PROJECT_ENVIRONMENT=${pwd}/.venv-psi ./scripts/install_curobo.sh
 ```
 
 Test installation, a version number should be displayed.
 ```bash
-python -c "import psi;print(psi.__version__)"
+python -c "import psi;print(psi.__version__);"
+```
+
+Verify `SIMPLE` installation
+``` bash
+python -c "import simple; print(simple.__version__)"
 ```
 
 Verify the shared `lerobot` stack is importable.
@@ -202,8 +221,8 @@ vim scripts/data/task_description_dict.json
 Run conversion script
 ```
 python scripts/data/raw_to_lerobot.py \
-  --data-root=/hfm/data/real_teleop_g1/g1_real_raw \
-  --work-dir=/hfm/data/real \
+  --data-root=$PWD/data/real_teleop_g1/g1_real_raw \
+  --work-dir=$PWD/data/real \
   --repo-id=psi0-real-g1 \
   --robot-type=g1 \
   --task=$task
@@ -534,6 +553,8 @@ source .venv-psi/bin/activate
 bash src/h_rdt/datasets/pretrain/run_pretrain_pipeline.sh
 ```
 
+> [Optinal] If you also want to train `FAST` tokenizer, please refer to [traing FAST](src/fast/README.md).
+
 ```
 bash scripts/train/psi0/pretrain-egodex-psi0-fast.sh 
 ```
@@ -557,8 +578,8 @@ Download pre-trained `psi-0` VLM backbone
 ```
 python scripts/data/download.py \
   --repo-id=USC-PSI-Lab/psi-model \
-  --remote-dir=pre.fast.egodex.2512241941/pretrained/ckpt_200000 \
-  --local-dir=/hfm/cache/checkpoints/psi0/pre.fast.egodex.2512241941.ckpt200k \
+  --remote-dir=psi0/pre.fast.1by1.2601091803.ckpt.ego200k.he30k \
+  --local-dir=$PSI_HOME/cache/checkpoints/psi0/pre.fast.1by1.2601091803.ckpt.ego200k.he30k \
   --repo-type=model
 ```
 
@@ -593,10 +614,13 @@ and more variants for ablation studies:
 
 Download the selected models
 
+> Edit `.env` to use `HF_ENDPOINT=https://hf-mirror.com` if needed.
+
 ```
-hf download USC-PSI-Lab/psi-model \
-  --remote-dir=<remote dictory on huggingface repo>
-  --local-dir=$PSI_HOME/cache/checkpoints \
+python scripts/data/download.py \
+  --repo-id=USC-PSI-Lab/psi-model \
+  --remote-dir=<Remote Directory> \
+  --local-dir=$PSI_HOME/cache/checkpoints/<Remote Directory> \
   --repo-type=model
 ```
 

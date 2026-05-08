@@ -9,7 +9,7 @@ cd /path/to/Psi0/src/h_rdt
 source .venv/bin/activate
 export DINO_SIGLIP_DIR="$PWD/bak/dino-siglip"
 export PRETRAINED_BACKBONE_PATH="$(find "$PWD/checkpoints/pretrain-0618" -path '*/pytorch_model.bin' | head -n1)"
-export LEROBOT_DATA_ROOT=/hfm/data/simple_hf/G1WholebodyXMovePick-v0
+export LEROBOT_DATA_ROOT="$(git rev-parse --show-toplevel)/third_party/SIMPLE/data/G1WholebodyXMoveAndPickMP-v0"
 export LEROBOT_VIDEO_BACKEND=pyav
 export WANDB_MODE=offline
 export USE_PRECOMP_LANG_EMBED=0
@@ -39,7 +39,7 @@ In another shell:
 ```bash
 cd /path/to/Psi0/src/h_rdt
 source .venv/bin/activate
-export LEROBOT_DATA_ROOT=/hfm/data/simple_hf/G1WholebodyXMovePick-v0
+export LEROBOT_DATA_ROOT="$(git rev-parse --show-toplevel)/third_party/SIMPLE/data/G1WholebodyXMoveAndPickMP-v0"
 export LEROBOT_VIDEO_BACKEND=pyav
 export USE_PRECOMP_LANG_EMBED=0
 export SERVER_URL=http://127.0.0.1:8010/predict
@@ -77,7 +77,7 @@ python -m simple.cli.eval \
   --eval-dir $PWD/third_party/SIMPLE/data/evals \
   --max-episode-steps 360 \
   --num-episodes 10 \
-  --data-dir /hfm/data/simple_hf/G1WholebodyXMovePick-v0 \
+  --data-dir "$(git rev-parse --show-toplevel)/third_party/SIMPLE/data/G1WholebodyXMoveAndPickMP-v0" \
   --success-criteria 0.9
 ```
 
@@ -114,7 +114,7 @@ for level in 0 1 2; do
     --num-episodes 10 \
     --num-workers 1 \
     --dr-level "$level" \
-    --data-dir /hfm/data/simple_hf/G1WholebodyXMovePick-v0 \
+    --data-dir "$(git rev-parse --show-toplevel)/third_party/SIMPLE/data/G1WholebodyXMoveAndPickMP-v0" \
     --success-criteria 0.9
 done
 ```

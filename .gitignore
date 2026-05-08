@@ -45,6 +45,7 @@ extern/vq_bet_official/
 src/fast/egodex-*
 *.pkl
 !src/fast/egodex-rel-50w-1x48-v2048-s100
+src/fast/pi
 
 .deepspeed_env
 *.bak
@@ -59,3 +60,5 @@ test.py
 *.npy
 
 unitree_sdk2_python
+
+src/h_rdt/datasets/pretrain/egodex_large_values.txt

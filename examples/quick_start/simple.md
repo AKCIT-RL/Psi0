@@ -68,7 +68,7 @@ config = EvalConfig(
     eval_dir="third_party/SIMPLE/data/evals",
     max_episode_steps=360,
     num_episodes=10,
-    data_dir="/hfm/data/simple_hf/G1WholebodyXMovePick-v0",
+    data_dir="third_party/SIMPLE/data/G1WholebodyXMoveAndPickMP-v0",
     success_criteria=0.9,
     num_workers=1,
 )
@@ -131,7 +131,7 @@ python -m simple.cli.eval \
   --eval-dir $PWD/third_party/SIMPLE/data/evals \
   --max-episode-steps 360 \
   --num-episodes 10 \
-  --data-dir /hfm/data/simple_hf/G1WholebodyXMovePick-v0 \
+  --data-dir "$(git rev-parse --show-toplevel)/third_party/SIMPLE/data/G1WholebodyXMoveAndPickMP-v0" \
   --success-criteria 0.9
 ```
 
@@ -163,7 +163,7 @@ python -m simple.cli.eval \
   --eval-dir $PWD/third_party/SIMPLE/data/evals \
   --max-episode-steps 360 \
   --num-episodes 10 \
-  --data-dir /hfm/data/simple_hf/G1WholebodyXMovePick-v0 \
+  --data-dir "$(git rev-parse --show-toplevel)/third_party/SIMPLE/data/G1WholebodyXMoveAndPickMP-v0" \
   --success-criteria 0.9
 ```
 

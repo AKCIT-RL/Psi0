@@ -1,9 +1,15 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
+
+# Load environment variables from .env BEFORE importing huggingface_hub
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+assert (PROJECT_ROOT / ".env").exists(), f".env file not found in {PROJECT_ROOT}"
+load_dotenv(PROJECT_ROOT / ".env")
+
 from huggingface_hub import snapshot_download, hf_hub_download, list_repo_files
 import tyro
 
-load_dotenv()
 
 def download_from_huggingface(repo_id: str, remote_dir: str, repo_type: str= "model", local_dir: str=".data", move_to_local_root: bool=True) -> str:
     """Download files or folders from Hugging Face repository.

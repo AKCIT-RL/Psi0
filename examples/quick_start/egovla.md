@@ -7,8 +7,8 @@ This guide assumes you already followed `psi.md`.
 ```bash
 cd /path/to/Psi0/src/egovla
 source .venv/bin/activate
-export DATA_ROOT=/hfm/data/simple_hf
-export LEROBOT_TASK_DIR=G1WholebodyXMovePick-v0
+export DATA_ROOT="$(git rev-parse --show-toplevel)/third_party/SIMPLE/data"
+export LEROBOT_TASK_DIR=G1WholebodyXMoveAndPickMP-v0
 export LEROBOT_VIDEO_BACKEND=pyav
 export CUDA_VISIBLE_DEVICES=0
 export WANDB_MODE=offline
@@ -28,8 +28,8 @@ Start the server:
 ```bash
 cd /path/to/Psi0/src/egovla
 source .venv/bin/activate
-export DATA_ROOT=/hfm/data/simple_hf
-export LEROBOT_TASK_DIR=G1WholebodyXMovePick-v0
+export DATA_ROOT="$(git rev-parse --show-toplevel)/third_party/SIMPLE/data"
+export LEROBOT_TASK_DIR=G1WholebodyXMoveAndPickMP-v0
 export LEROBOT_VIDEO_BACKEND=pyav
 bash deploy.sh ./checkpoints/xmovepick_egovla_1k/checkpoint-1000 127.0.0.1 8009
 ```
@@ -39,8 +39,8 @@ In another shell:
 ```bash
 cd /path/to/Psi0/src/egovla
 source .venv/bin/activate
-export DATA_ROOT=/hfm/data/simple_hf
-export LEROBOT_TASK_DIR=G1WholebodyXMovePick-v0
+export DATA_ROOT="$(git rev-parse --show-toplevel)/third_party/SIMPLE/data"
+export LEROBOT_TASK_DIR=G1WholebodyXMoveAndPickMP-v0
 export LEROBOT_VIDEO_BACKEND=pyav
 export SERVER_URL=http://127.0.0.1:8009/predict
 export MAX_SAMPLES=8
@@ -67,7 +67,7 @@ python -m simple.cli.eval \
   --eval-dir $PWD/third_party/SIMPLE/data/evals \
   --max-episode-steps 360 \
   --num-episodes 10 \
-  --data-dir /hfm/data/simple_hf/G1WholebodyXMovePick-v0 \
+  --data-dir "$(git rev-parse --show-toplevel)/third_party/SIMPLE/data/G1WholebodyXMoveAndPickMP-v0" \
   --success-criteria 0.9
 ```
 
@@ -96,7 +96,7 @@ for level in 0 1 2; do
     --num-episodes 10 \
     --num-workers 1 \
     --dr-level "$level" \
-    --data-dir /hfm/data/simple_hf/G1WholebodyXMovePick-v0 \
+    --data-dir "$(git rev-parse --show-toplevel)/third_party/SIMPLE/data/G1WholebodyXMoveAndPickMP-v0" \
     --success-criteria 0.9
 done
 ```

@@ -5,7 +5,7 @@ This guide assumes a fresh clone of the public repo at
 
 The baseline quick starts under this directory use the xmove-pick SIMPLE dataset:
 
-- `/hfm/data/simple_hf/G1WholebodyXMovePick-v0`
+- `third_party/SIMPLE/data/G1WholebodyXMoveAndPickMP-v0`
 
 Unless noted otherwise, commands assume you are already inside the top-level
 Psi0 dev shell started from the repo root with `nix develop`.
@@ -85,7 +85,7 @@ uv sync --frozen
 
 The baseline guides below use:
 
-- Dataset: `/hfm/data/simple_hf/G1WholebodyXMovePick-v0`
+- Dataset: `third_party/SIMPLE/data/G1WholebodyXMoveAndPickMP-v0`
 - H-RDT release weights downloaded under `src/h_rdt`
 - EgoVLA base checkpoint downloaded under `src/egovla/checkpoints`
 
