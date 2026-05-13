@@ -608,14 +608,11 @@ GIT_LFS_SKIP_SMUDGE=1 uv ...
 ## Citation
 
 ```
-@misc{wei2026psi0,
-  title={$\Psi_0$: An Open Foundation Model Towards Universal Humanoid Loco-Manipulation}, 
-  author={Songlin Wei and Hongyi Jing and Boqian Li and Zhenyu Zhao and Jiageng Mao and Zhenhao Ni and Sicheng He and Jie Liu and Xiawei Liu and Kaidi Kang and Sheng Zang and Weiduo Yuan and Marco Pavone and Di Huang and Yue Wang},
-  year={2026},
-  eprint={2603.12263},
-  archivePrefix={arXiv},
-  primaryClass={cs.RO},
-  url={https://arxiv.org/abs/2603.12263}, 
+@article{wei2026psi0,
+  title={{$\Psi_0$}: An Open Foundation Model Towards Universal Humanoid Loco-Manipulation},
+  author={Wei, Songlin and Jing, Hongyi and Li, Boqian and Zhao, Zhenyu and Mao, Jiageng and Ni, Zhenhao and He, Sicheng and Liu, Jie and Liu, Xiawei and Kang, Kaidi and others},
+  journal={arXiv preprint arXiv:2603.12263},
+  year={2026}
 }
 ```
 
