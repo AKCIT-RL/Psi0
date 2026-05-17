@@ -1,0 +1,38 @@
+# Run with:
+# docker compose --env-file docker/.env.docker -f docker/compose.yaml build
+# docker compose --env-file docker/.env.docker -f docker/compose.yaml up --build
+#
+# Configuration:
+# Edit docker/.env.docker to customize CUDA_VERSION, PYTHON_VERSION, PyTorch versions, etc.
+services:
+  psi0:
+    image: psi0-train
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.flex
+      args:
+        CUDA_VERSION: ${CUDA_VERSION:-13.0.0}
+        CUDNN_VERSION: ${CUDNN_VERSION:-cudnn}
+        UBUNTU_VERSION: ${UBUNTU_VERSION:-ubuntu24.04}
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.10}
+    init: true
+    tty: true
+    network_mode: host
+    environment:
+      WANDB_API_KEY: ${WANDB_API_KEY}
+      HF_TOKEN: ${HF_TOKEN}
+    volumes:
+      - ../:/workspace/
+      - ../.cache/:/root/.cache/
+    # limit memory usage to 64GB (adjust as needed)
+    # mem_limit: 64g
+    shm_size: 16g
+    runtime: nvidia
+    entrypoint: ""
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

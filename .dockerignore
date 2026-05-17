@@ -23,16 +23,26 @@ cache/
 *.safetensors
 
 # Third-party submodules not needed for PSI training
-third_party/
-src/gr00t/
-src/egovla/
-src/h_rdt/
-src/InternVLA-M1/
-src/act/
-src/dp/
-src/fast/
-src/openpi/
-src/lerobot_patch/
+
+#rafael: COMMENTED OUT FOR NOW - we may need some of these for training, and we can always add them back in later if we find we don't need them
+
+# third_party/
+# !third_party/SIMPLE/
+# !third_party/SIMPLE/pyproject.toml
+# !third_party/SIMPLE/src/
+# !third_party/SIMPLE/src/**
+# !third_party/SIMPLE/third_party/
+# !third_party/SIMPLE/third_party/curobo/
+# !third_party/SIMPLE/third_party/curobo/**
+# src/gr00t/
+# src/egovla/
+# src/h_rdt/
+# src/InternVLA-M1/
+# src/act/
+# src/dp/
+# src/fast/
+# src/openpi/
+# src/lerobot_patch/
 
 # Baselines other than psi
 baselines/

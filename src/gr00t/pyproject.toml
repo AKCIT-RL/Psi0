@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "gr00t"
 version = "0.1.0"
-requires-python = "==3.10.*"
+requires-python = ">=3.10"
 # Mirror the main repo's baseline dependencies so install behaves the same.
 dependencies = [
     "albumentations==1.4.18",
@@ -20,11 +20,10 @@ dependencies = [
     "pandas==2.2.3",
     "peft==0.17.1",
     "termcolor==3.2.0",
-    "torch==2.7.0",
-    "torchvision==0.22.0",
+    #"torch==2.7.0",
     "transformers==4.51.3",
     "tyro==0.9.17",
-    "flash-attn==2.7.4.post1",
+    #"flash-attn==2.7.4.post1",
     "click==8.1.8",
     "datasets==3.6.0",
     "einops==0.8.1",
@@ -33,10 +32,11 @@ dependencies = [
     "numpy==1.26.4",
     "omegaconf==2.3.0",
     "scipy==1.15.3",
-    "torchcodec==0.4.0",
+    #"torchcodec==0.4.0",
     "wandb==0.23.0",
     "pyzmq==27.0.1",
-    "deepspeed==0.17.6",
+    #"deepspeed==0.17.6",
+    "torchvision>=0.27.0",
 ]
 
 [project.optional-dependencies]
@@ -45,7 +45,7 @@ dev = [
     "ipython",
 ]
 tensorrt = [
-    "onnx>=1.20.0",
+#    "onnx>=1.20.0",
     "tensorrt>=10.14.1.48.post1",
 ]
 
@@ -53,11 +53,11 @@ tensorrt = [
 where = ["."]
 include = ["gr00t*"]
 
-[tool.uv.sources]
-flash-attn = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.7cxx11abiTRUE-cp310-cp310-linux_x86_64.whl" }
+#[tool.uv.sources]
+#flash-attn = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.7cxx11abiTRUE-cp310-cp310-linux_x86_64.whl" }
 
-[tool.uv.extra-build-dependencies]
-flash-attn = ["torch==2.7.0", "numpy==1.26.4"]
+#[tool.uv.extra-build-dependencies]
+#flash-attn = ["torch==2.7.0", "numpy==1.26.4"]
 
 [tool.ruff]
 line-length = 100

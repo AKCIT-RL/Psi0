@@ -41,7 +41,7 @@ if [[ -z "$DATASET_ARG" ]]; then
     echo "  # Local dataset (mounted at /workspace/data/)"
     echo "  $0 pick_cylinder_manipulation_psi"
     echo ""
-    echo "  # HuggingFace dataset (auto-downloaded)"
+    echo "  # HuggingFace dataset subfolder (namespace/repo_name/subfolder/dataset_name)"
     echo "  $0 USC-PSI-Lab/psi-data/simple/G1WholebodyXMovePick-v0"
     exit 1
 fi
@@ -54,31 +54,57 @@ elif [[ -d "/workspace/data/real/$DATASET_ARG" ]]; then
 elif [[ -d "$DATASET_ARG" ]]; then
     DATASET_PATH="$(cd "$DATASET_ARG" && pwd)"
 else
-    # Treat as HuggingFace repo_id — download to /workspace/data/
+    # Treat as HuggingFace repo_id — format: namespace/repo_name[/subfolder/dataset_name]
     echo "[INFO] Dataset not found locally. Attempting HuggingFace download..."
-    echo "       repo_id: $DATASET_ARG"
-    
+    echo "       arg: $DATASET_ARG"
+
+    # Split into repo_id (first two components) and optional subfolder (remainder)
+    HF_REPO_ID="$(echo "$DATASET_ARG" | cut -d'/' -f1-2)"
+    HF_SUBFOLDER="$(echo "$DATASET_ARG" | cut -d'/' -f3-)"
+
     DATASET_NAME=$(basename "$DATASET_ARG")
     DEST="/workspace/data/$DATASET_NAME"
     mkdir -p "$DEST"
-    
-    HF_ARGS=""
+
+    HF_TOKEN_ARG=""
     if [[ -n "${HF_TOKEN:-}" ]]; then
-        HF_ARGS="--token=$HF_TOKEN"
+        HF_TOKEN_ARG="--token=$HF_TOKEN"
     fi
-    
-    huggingface-cli download "$DATASET_ARG" \
-        --repo-type dataset \
-        --local-dir "$DEST" \
-        $HF_ARGS
-    
-    # If it's a zip, extract
-    if [[ -f "$DEST/$DATASET_NAME.zip" ]]; then
-        echo "[INFO] Extracting $DATASET_NAME.zip..."
-        unzip -q "$DEST/$DATASET_NAME.zip" -d "/workspace/data"
-        DEST="/workspace/data/$DATASET_NAME"
+
+    if [[ -n "$HF_SUBFOLDER" ]]; then
+        # Datasets are stored as zips: simple/<dataset_name>.zip
+        STAGING="/workspace/data/.hf_staging_$DATASET_NAME"
+        mkdir -p "$STAGING"
+        hf download "$HF_REPO_ID" \
+            --repo-type dataset \
+            --include "${HF_SUBFOLDER}.zip" \
+            --local-dir "$STAGING" \
+            $HF_TOKEN_ARG
+        ZIP_FILE="$STAGING/${HF_SUBFOLDER}.zip"
+        if [[ ! -f "$ZIP_FILE" ]]; then
+            echo "[ERROR] Expected zip not found: $ZIP_FILE"
+            rm -rf "$STAGING"
+            exit 1
+        fi
+        echo "[INFO] Extracting $(basename "$ZIP_FILE")..."
+        unzip -qo "$ZIP_FILE" -d "$STAGING"
+        # The zip extracts to a subdirectory named after the dataset; move it to DEST
+        EXTRACTED="$STAGING/$DATASET_NAME"
+        if [[ -d "$EXTRACTED" ]]; then
+            rm -rf "$DEST"
+            mv "$EXTRACTED" "$DEST"
+        else
+            rm -rf "$DEST"
+            mv "$STAGING" "$DEST"
+        fi
+        rm -rf "$STAGING"
+    else
+        hf download "$HF_REPO_ID" \
+            --repo-type dataset \
+            --local-dir "$DEST" \
+            $HF_TOKEN_ARG
     fi
-    
+
     DATASET_PATH="$DEST"
 fi
 
@@ -118,7 +144,7 @@ _download_ckpt() {
     fi
     echo "[INFO] Downloading $label from HuggingFace..."
     mkdir -p "$(dirname "$path")"
-    huggingface-cli download USC-PSI-Lab/psi-model \
+    hf download USC-PSI-Lab/psi-model \
         --include "${remote}/**" \
         --local-dir="$(dirname "$PSI_CKPT_DIR")" \
         --repo-type=model
