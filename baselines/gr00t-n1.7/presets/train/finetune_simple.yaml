@@ -1,0 +1,23 @@
+extends: _common_finetune.yaml
+runtime:
+  cuda_visible_devices: "0"
+  master_port: 29502
+model:
+  base_model_path: ./checkpoints/GR00T-N1.7-3B
+dataset:
+  path: /home/lucas_olives/Documents/ih/Psi0/data/simple_teleop_g1/simple/G1WholebodyLocomotionPickBetweenTablesTeleop-v0
+  embodiment_tag: UNITREE_G1_N1D7
+training:
+  num_gpus: 1
+  output_dir: ./checkpoints/gr00t_n1d7_finetune_output
+  global_batch_size: 4
+  gradient_accumulation_steps: 6
+  gradient_checkpointing: true
+  eval_strategy: steps
+  eval_steps: 1000
+  val_split: 0.1
+  use_wandb: false
+env:
+  DATASET_PATH: /path/to/your/lerobot/dataset
+  NO_ALBUMENTATIONS_UPDATE: "1"
+  PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
