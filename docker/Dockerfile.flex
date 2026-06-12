@@ -58,13 +58,31 @@ WORKDIR /workspace
 # COPY scripts /workspace/scripts
 # COPY docker/entrypoint.sh /workspace/docker/entrypoint.sh
 # RUN chmod +x /workspace/docker/entrypoint.sh
-ARG PYTHON_VERSION
-RUN uv venv .venv-psi --python ${PYTHON_VERSION} 
 
-RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    --mount=type=bind,source=third_party,target=third_party \
-    GIT_LFS_SKIP_SMUDGE=1 uv sync --all-groups --no-sources --index-strategy unsafe-best-match --active
+
+# ───────────────────────── Python environment setup ───────────────────────
+# ARG PYTHON_VERSION
+# RUN uv venv .venv-psi --python ${PYTHON_VERSION}
+# ENV VIRTUAL_ENV=/workspace/.venv-psi
+# ENV PATH="/workspace/.venv-psi/bin:$PATH"
+
+# # third_party must be a writable layer (not a read-only bind mount) so that
+# # setuptools can write egg-info dirs (e.g. simple.egg-info, nvidia_curobo.egg-info)
+# COPY third_party /workspace/third_party
+# COPY pyproject.toml README.md /workspace/
+# COPY src /workspace/src
+
+# RUN --mount=type=cache,target=/root/.cache/uv \
+#     # Allow setuptools-scm / vcs-versioning to introspect git inside submodules
+#     git config --global --add safe.directory /workspace/third_party/SIMPLE \
+#     && git config --global --add safe.directory /workspace/third_party/SIMPLE/third_party/curobo \
+#     #split cuda version to major and minor for uv group naming
+#     && CUDA_MAJOR=$(echo ${CUDA_VERSION} | cut -d. -f1) \
+#     && GIT_LFS_SKIP_SMUDGE=1 uv sync --all-groups --index-strategy unsafe-best-match --active --extra cuda${CUDA_MAJOR}
+#     # && GIT_LFS_SKIP_SMUDGE=1 uv sync --all-groups --index-strategy unsafe-best-match --active --extra cuda${CUDA_MAJOR} --frozen
+#     # GIT_LFS_SKIP_SMUDGE=1 uv sync --all-groups --no-sources --index-strategy unsafe-best-match --active
+
+
 
 
 #     5  uv add huggingface_cli

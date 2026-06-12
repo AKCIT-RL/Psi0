@@ -6,7 +6,7 @@
 # Edit docker/.env.docker to customize CUDA_VERSION, PYTHON_VERSION, PyTorch versions, etc.
 services:
   psi0:
-    image: psi0-train
+    image: psi0-train:${IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: docker/Dockerfile.flex

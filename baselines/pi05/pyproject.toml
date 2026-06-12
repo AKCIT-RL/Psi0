@@ -1,0 +1,97 @@
+[project]
+name = "pi05-env"
+version = "0.1.0"
+description = "π0.5 training environment"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    # JAX ecosystem (non-cuda deps)
+    "dotenv",
+    "tyro",
+    "augmax>=0.3.4",
+    "equinox>=0.11.8",
+    "flatbuffers>=24.3.25",
+    "flax==0.10.2",
+    "fsspec[gcs]>=2024.6.0",
+    "gym-aloha>=0.1.1",
+    "imageio>=2.36.1",
+    "ml_collections==1.0.0",
+    "opencv-python>=4.10.0.84",
+    "openpi",
+    # openpi-client requires numpy<2.0 — only compatible with cuda12/jax[cuda12]
+    # "openpi-client",  # added per-extra below
+    "numpydantic==1.6.7",
+    "pydantic==2.10.6",
+    "pydantic-yaml>=1.6.0",
+    "pillow>=11.0.0",
+    "sentencepiece>=0.2.0",
+    "tqdm-loggable>=0.2",
+    "typing-extensions>=4.12.2",
+    "wandb>=0.19.1",
+    "filelock>=3.16.1",
+    "beartype==0.19.0",
+    "treescope>=0.1.7",
+    "transformers==4.53.2",
+    "rich>=14.0.0",
+    "polars>=1.30.0",
+    "pytest>=8.3.4",
+    "datasets==3.6.0",
+    "matplotlib",
+    "lerobot @ git+https://github.com/huggingface/lerobot.git@f39652707caed42a7cd5ab36066da5663b9565eb",
+]
+
+[project.optional-dependencies]
+# Python 3.10 + CUDA 12.x
+cuda12 = [
+    "openpi-client",  # needs numpy<2.0, incompatible with jax[cuda13]
+    "jax[cuda12]==0.5.3",
+    "jaxtyping==0.2.36",
+    "numpy>=1.22.4,<2.0.0",
+    "orbax-checkpoint==0.11.13",
+    "torch==2.7.1",
+    "torchcodec==0.5 ; python_version == '3.10' and sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+
+# Python 3.12 + CUDA 13.x
+cuda13 = [
+    "openpi-client ; python_version >= '3.12'",
+    "jax[cuda13]>=0.7.2 ; python_version >= '3.12'",
+    "jaxtyping==0.2.36 ; python_version >= '3.12'",
+    "numpy>=2.0.0 ; python_version >= '3.12'",  # jax[cuda13]>=0.7.2 requires numpy>=2.0
+    "orbax-checkpoint==0.11.18 ; python_version >= '3.12'",
+    "torch>=2.11.0 ; python_version >= '3.12'",
+    "torchcodec>=0.5 ; python_version >= '3.12' and sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = []
+
+[tool.uv.sources]
+openpi = { path = "../../src/openpi", editable = true }
+openpi-client = { path = "../../src/openpi/openpi-client", editable = true }
+torch = [
+    { index = "pytorch-cu126", extra = "cuda12" },
+    { index = "pytorch-cu130", extra = "cuda13" },
+]
+
+[tool.uv]
+conflicts = [
+    [
+        { extra = "cuda12" },
+        { extra = "cuda13" },
+    ],
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
