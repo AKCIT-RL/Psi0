@@ -20,10 +20,8 @@ dependencies = [
     "pandas==2.2.3",
     "peft==0.17.1",
     "termcolor==3.2.0",
-    #"torch==2.7.0",
-    "transformers==4.51.3",
+    "transformers==4.57.0",
     "tyro==0.9.17",
-    #"flash-attn==2.7.4.post1",
     "click==8.1.8",
     "datasets==3.6.0",
     "einops==0.8.1",
@@ -32,11 +30,10 @@ dependencies = [
     "numpy==1.26.4",
     "omegaconf==2.3.0",
     "scipy==1.15.3",
-    #"torchcodec==0.4.0",
     "wandb==0.23.0",
     "pyzmq==27.0.1",
-    #"deepspeed==0.17.6",
-    # torch / torchvision / flash-attn added via cuda12 or cuda13 extras below
+    "bitsandbytes",
+    "mpi4py",
 ]
 
 [project.optional-dependencies]
@@ -51,9 +48,10 @@ cuda12 = [
 # Python 3.12 + CUDA 13.x
 cuda13 = [
     "torch>=2.11.0 ; python_version >= '3.12'",
-    "torchvision>=0.21.0 ; python_version >= '3.12'",
-    "deepspeed==0.17.1 ; python_version >= '3.12'",
+    "torchvision>=0.26.0 ; python_version >= '3.12'",
+    "deepspeed==0.17.6 ; python_version >= '3.12'",
     "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn-2.8.3+cu130torch2.11-cp312-cp312-linux_x86_64.whl ; python_version >= '3.12' and sys_platform == 'linux' and platform_machine == 'x86_64' and extra == 'cuda13'",
+    "torchcodec @ https://download.pytorch.org/whl/cu130/torchcodec-0.11.1%2Bcu130-cp312-cp312-manylinux_2_28_x86_64.whl ; python_version >= '3.12' and sys_platform == 'linux' and platform_machine == 'x86_64' and extra == 'cuda13'",
 ]
 
 dev = [
