@@ -137,10 +137,10 @@ def create_torch_dataset(
     if repo_id == "fake":
         return FakeDataset(model_config, num_samples=1024)
 
+    print('TESTING: repo_id: ', repo_id)
     dataset_meta = LeRobotDatasetMetadata(repo_id)
     dataset = LeRobotDataset(
-        "psi",
-        root=data_config.repo_id,
+        repo_id,
         delta_timestamps={
             key: [t / dataset_meta.fps for t in range(action_horizon)] for key in data_config.action_sequence_keys
         },

@@ -5,7 +5,6 @@ import jax
 import numpy as np
 import orbax.checkpoint as ocp
 import sentencepiece
-from transformers import AutoProcessor
 
 import openpi.models.utils.fsq_tokenizer as fsq_tokenizer
 import openpi.shared.download as download
@@ -58,6 +57,8 @@ class FASTTokenizer:
             self._paligemma_tokenizer = sentencepiece.SentencePieceProcessor(model_proto=f.read())
 
         # Instantiate FAST tokenizer
+        from transformers import AutoProcessor
+
         self._fast_tokenizer = AutoProcessor.from_pretrained(fast_tokenizer_path, trust_remote_code=True)
         self._fast_skip_tokens = 128  # Skip last 128 tokens in PaliGemma vocab since they are special tokens
 
