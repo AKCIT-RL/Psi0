@@ -137,7 +137,6 @@ def create_torch_dataset(
     if repo_id == "fake":
         return FakeDataset(model_config, num_samples=1024)
 
-    print('TESTING: repo_id: ', repo_id)
     dataset_meta = LeRobotDatasetMetadata(repo_id)
     dataset = LeRobotDataset(
         repo_id,

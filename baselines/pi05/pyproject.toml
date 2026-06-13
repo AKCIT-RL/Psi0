@@ -61,6 +61,7 @@ cuda13 = [
     "orbax-checkpoint==0.11.18 ; python_version >= '3.12'",
     "torch>=2.11.0 ; python_version >= '3.12'",
     "torchcodec>=0.5 ; python_version >= '3.12' and sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "torchcodec==0.11 ; python_version >= '3.12' and sys_platform == 'linux' and platform_machine == 'aarch64' and extra == 'cuda13'",
 ]
 
 [build-system]
