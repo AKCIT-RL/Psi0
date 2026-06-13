@@ -43,6 +43,7 @@ cuda13 = [
     "torch>=2.11.0",
     "torchvision",
     "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn-2.8.3+cu130torch2.11-cp312-cp312-linux_x86_64.whl ; python_version >= '3.12' and sys_platform == 'linux' and platform_machine == 'x86_64' and extra == 'cuda13'",
+    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.22/flash_attn-2.8.3+cu130torch2.12-cp312-cp312-linux_aarch64.whl ; python_version >= '3.12' and sys_platform == 'linux' and platform_machine == 'aarch64' and extra == 'cuda13'",
     "torchcodec @ https://download.pytorch.org/whl/cu130/torchcodec-0.11.1%2Bcu130-cp310-cp310-manylinux_2_28_x86_64.whl ; python_version == '3.10' and sys_platform == 'linux' and platform_machine == 'x86_64' and extra == 'cuda13'",
     "torchcodec @ https://download.pytorch.org/whl/cu130/torchcodec-0.11.1%2Bcu130-cp312-cp312-manylinux_2_28_x86_64.whl ; python_version >= '3.12' and sys_platform == 'linux' and platform_machine == 'x86_64' and extra == 'cuda13'",
 ]

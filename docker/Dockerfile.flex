@@ -29,7 +29,7 @@
 ARG CUDA_VERSION=13.0.0
 ARG UBUNTU_VERSION=ubuntu24.04
 
-FROM nvidia/cuda:${CUDA_VERSION}-cudnn-runtime-${UBUNTU_VERSION}
+FROM nvidia/cuda:${CUDA_VERSION}-cudnn-devel-${UBUNTU_VERSION}
 
 ENV NVIDIA_DRIVER_CAPABILITIES=graphics,utility,compute
 ENV DEBIAN_FRONTEND=noninteractive

@@ -27,7 +27,7 @@ services:
     # limit memory usage to 64GB (adjust as needed)
     # mem_limit: 64g
     shm_size: 16g
-    runtime: nvidia
+#    runtime: nvidia
     entrypoint: ""
     deploy:
       resources:
