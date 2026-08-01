@@ -152,10 +152,14 @@ def detect_action_joint_blocks(df: pd.DataFrame, lag: int = 5) -> dict[str, int]
         return float(np.median(corrs)) if corrs else 0.0
 
     blocks = {"legs": 0, "waist": 12, "left_arm": 15}
-    # right_arm sits either directly after left_arm (22) or after an unused hand slot (29)
+    # right_arm sits either directly after left_arm (22) or after a left-hand slot (29).
+    # Decide by which candidate tracks the measured right arm, and require a margin over
+    # the runner-up. Note the slot at 22 is NOT necessarily zero: single-arm tasks leave
+    # the left hand idle, but a handover task commands it.
     cand = {off: score(off, G1_STATE_BLOCKS["right_arm"], 7) for off in (22, 29)}
     best = max(cand, key=cand.get)
-    if cand[best] < 0.8:
+    runner_up = max(v for k, v in cand.items() if k != best)
+    if cand[best] < 0.8 or (cand[best] - runner_up) < 0.15:
         return None
     blocks["right_arm"] = best
     blocks["left_hand"] = 29 if best == 22 else 22
