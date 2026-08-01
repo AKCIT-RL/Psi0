@@ -362,6 +362,33 @@ O tag `g1_loco_downstream` é mapeado ao índice de projetor 25 em `EMBODIMENT_T
 
 ---
 
+### 7.9 Confirmação em `G1WholebodyHandoverTeleop-v0`
+
+O dataset do Handover foi posteriormente processado no cluster, confirmando o mesmo
+schema cru de 43 graus de liberdade (100 episódios, 47.562 frames) e a mesma ordenação
+divergente de juntas descrita em 7.1.
+
+A verificação de layout do conversor reportou:
+
+```
+right arm confirmed at action[29:36] (median |r| per candidate: {22: 0.578, 29: 0.997})
+left hand confirmed at action[22:29]  (median |r| = 0.91)
+```
+
+Após a conversão, `action.height` resulta **constante em 0,74 m**: a tarefa de entrega
+não exige agachamento. Isso fecha o diagnóstico para essa tarefa. Com o `modality.json`
+incorreto, o índice 31 caía dentro do bloco do braço direito (`action[29:36]`), de modo
+que o comando de altura da pelve recebia o ângulo de uma junta de ombro variável no
+lugar de um valor constante de 0,74 m. O colapso postural observado tem, portanto, a
+mesma causa raiz do OpenOven, com a diferença de que aqui o sinal correto é constante.
+
+Observação metodológica: a verificação de layout original do conversor exigia que
+`action[22:29]` fosse identicamente zero. Essa condição vale para tarefas de um só
+braço, como o OpenOven, mas não para o Handover, que comanda as duas mãos. A checagem
+foi generalizada para discriminar a posição do braço direito por correlação com margem
+sobre o segundo colocado, e para verificar a mão esquerda apenas quando a tarefa a
+utiliza.
+
 ## 8. Correções implementadas
 
 ### 8.1 Conversor para o schema de teleoperação com WBC desacoplado
@@ -513,7 +540,7 @@ custo de avaliação    89 s por avaliação, ~74 min no total
 
 3. **Ramo `proprio/amo_policy` não validado ponta a ponta.** A correção semântica do `rpy` nesse ramo foi verificada isoladamente e contra a referência do conversor, mas o ramo não é exercitado pelo fluxo do SIMPLE. A mudança só se manifesta em deployment com robô real.
 
-4. **Escopo de datasets verificado.** A análise confirmou o defeito em `G1WholebodyOpenOvenTeleop-v0`. `G1WholebodyHandoverTeleop-v0` apresentou o mesmo comportamento e presumivelmente a mesma causa, mas seu dataset não estava disponível localmente para verificação direta.
+4. **Escopo de datasets verificado.** A análise confirmou o defeito em `G1WholebodyOpenOvenTeleop-v0` e, posteriormente, em `G1WholebodyHandoverTeleop-v0` (ver 7.9). Os demais datasets provenientes da stack de gravação crua ainda precisam passar pelo fluxo de conversão e validação.
 
 5. **Correções não commitadas no repositório.** Há uma correção anterior não commitada em `sharded_mixture_dataset.py` (guarda contra worker sem shards atribuídos), datada de 14 de junho, que resolve um `IndexError` no primeiro eval. Um `git checkout` desse arquivo reintroduziria a falha.
 
