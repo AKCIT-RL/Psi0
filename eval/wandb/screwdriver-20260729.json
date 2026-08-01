@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "entity": "ih-akcit",
+  "project": "simple-policy-eval",
+  "group": "screwdriver-to-tote-20260729",
+  "expected_episodes": 10,
+  "task": "simple/G1IndustrialScrewdriverToToteTeleop-v0",
+  "dataset": "data/evals/simple-eval/simple/G1IndustrialScrewdriverToToteTeleop-v0/level-0",
+  "dataset_episodes": "0-9",
+  "simple_commit": "68a038640cb212a65244958e865ac3905d58644e",
+  "docker_image_id": "sha256:48d643a43d762b73d55f6a2be2704be60539e6b030aca3a8ef0373dc8e16d2a5",
+  "runs": {
+    "psi0_h24": {
+      "id": "screwdriver-20260729-psi0-480875-h24-s1200",
+      "name": "psi0-ckpt480875-h24-steps1200",
+      "result_dir": "eval/results/screwdriver-20260729/psi0_h24",
+      "tags": ["simple", "industrial_env", "screwdriver-to-tote", "psi0", "rtc", "horizon-24", "steps-1200", "simple-68a0386"],
+      "config": {
+        "policy": "psi0",
+        "checkpoint_step": 480875,
+        "source_training_run": "ih-akcit/psi/hx9klxkx",
+        "action_exec_horizon": 24,
+        "rtc": true,
+        "max_episode_steps": 1200
+      }
+    },
+    "psi0_h30": {
+      "id": "screwdriver-20260729-psi0-480875-h30-s1200",
+      "name": "psi0-ckpt480875-h30-steps1200",
+      "result_dir": "eval/results/screwdriver-20260729/psi0_h30",
+      "tags": ["simple", "industrial_env", "screwdriver-to-tote", "psi0", "rtc", "horizon-30", "steps-1200", "simple-68a0386"],
+      "config": {
+        "policy": "psi0",
+        "checkpoint_step": 480875,
+        "source_training_run": "ih-akcit/psi/hx9klxkx",
+        "action_exec_horizon": 30,
+        "rtc": true,
+        "max_episode_steps": 1200
+      }
+    },
+    "psi0_h24_steps1500": {
+      "id": "screwdriver-20260729-psi0-480875-h24-s1500",
+      "name": "psi0-ckpt480875-h24-steps1500",
+      "result_dir": "eval/results/screwdriver-20260729/psi0_h24_steps1500",
+      "tags": ["simple", "industrial_env", "screwdriver-to-tote", "psi0", "rtc", "horizon-24", "steps-1500", "simple-68a0386"],
+      "config": {
+        "policy": "psi0",
+        "checkpoint_step": 480875,
+        "source_training_run": "ih-akcit/psi/hx9klxkx",
+        "action_exec_horizon": 24,
+        "rtc": true,
+        "max_episode_steps": 1500
+      }
+    },
+    "dp_h6": {
+      "id": "screwdriver-20260729-dp-42000-h6-s1200",
+      "name": "dp-ckpt42000-h6-steps1200",
+      "result_dir": "eval/results/screwdriver-20260729/dp_h6",
+      "tags": ["simple", "industrial_env", "screwdriver-to-tote", "diffusion-policy", "horizon-6", "steps-1200", "simple-68a0386"],
+      "config": {
+        "policy": "diffusion-policy",
+        "checkpoint_step": 42000,
+        "source_training_run": "ih-akcit/psi/3av5hapm",
+        "action_exec_horizon": 6,
+        "rtc": false,
+        "max_episode_steps": 1200
+      }
+    }
+  }
+}
