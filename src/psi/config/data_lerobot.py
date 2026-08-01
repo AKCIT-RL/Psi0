@@ -78,8 +78,19 @@ class LerobotDataConfig(DataConfig):
         from psi.data.lerobot import LeRobotDatasetWrapper
         from psi.data.dataset import Dataset as MapStyleDataset
 
-        train_dataset = LeRobotDatasetWrapper(self, split=split)
-        return MapStyleDataset(self, train_dataset, transform_kwargs=transform_kwargs)
+        data_config = self
+        field_transform = self.transform.field
+        if (
+            split == "val"
+            and isinstance(field_transform, ActionStateTransform)
+            and (field_transform.state_noise_std > 0.0 or field_transform.state_noise_std_waist > 0.0)
+        ):
+            data_config = self.model_copy(deep=True)
+            data_config.transform.field.state_noise_std = 0.0
+            data_config.transform.field.state_noise_std_waist = 0.0
+
+        train_dataset = LeRobotDatasetWrapper(data_config, split=split)
+        return MapStyleDataset(data_config, train_dataset, transform_kwargs=transform_kwargs)
 
     def mock(self, split: str = "train", transform_kwargs={}, **kwargs) -> Any:
         dataset = self.__call__(split, transform_kwargs=transform_kwargs, **kwargs)

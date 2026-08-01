@@ -426,6 +426,8 @@ class ActionStateTransform(FieldTransform):
     state_min: Optional[List[float]] = None
     state_max: Optional[List[float]] = None
     normalize_state: bool = False  # whether to normalize states
+    state_noise_std: float = 0.0
+    state_noise_std_waist: float = 0.0
 
     pad_action_dim: int | None = None
     pad_state_dim: int | None = None
@@ -466,6 +468,21 @@ class ActionStateTransform(FieldTransform):
             f"{self.stat_path} is not loaded properly. Probably {resolve_path(self.stat_path)} does not exist."
         action_min = np.array(self.action_min, dtype=np.float32)
         action_max = np.array(self.action_max, dtype=np.float32)
+        if self.state_noise_std > 0.0 or self.state_noise_std_waist > 0.0:
+            states = np.array(data["states"], copy=True)
+            if self.state_noise_std > 0.0:
+                states[..., :28] += np.random.normal(
+                    0.0,
+                    self.state_noise_std,
+                    size=states[..., :28].shape,
+                )
+            if self.state_noise_std_waist > 0.0:
+                states[..., 28:31] += np.random.normal(
+                    0.0,
+                    self.state_noise_std_waist,
+                    size=states[..., 28:31].shape,
+                )
+            data["states"] = states
         if self.normalize_state:
             data["states"] = self.normalize_state_func(data["states"])
 
