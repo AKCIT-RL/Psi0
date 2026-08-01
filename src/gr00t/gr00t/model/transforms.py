@@ -13,6 +13,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# =====================================================================================
+# DEAD CODE -- N1.6-era pipeline. NOT used by GR00T N1.7 and NOT importable.
+#
+#   $ python -c "import gr00t.model.transforms"
+#   ImportError: cannot import name 'EMBODIMENT_TAG_MAPPING' from 'gr00t.data.embodiment_tags'
+#
+# The live N1.7 path is:
+#   experiment/experiment.py -> model/gr00t_n1d7/setup.py::Gr00tN1d7Pipeline
+#     -> model/gr00t_n1d7/processing_gr00t_n1d7.py::Gr00tN1d7Processor
+#     -> data/state_action/state_action_processor.py::StateActionProcessor
+#     -> data/utils.py::normalize_values_minmax / unnormalize_values_minmax
+#
+# Kept (not deleted) because src/gr00t is a vendored upstream copy and removing files
+# would complicate future merges. Do not use this module as a reference for how
+# normalization or modality handling actually behaves -- its semantics differ from the
+# live path (e.g. Normalizer in data/transform/state_action.py treats degenerate
+# dimensions differently from normalize_values_minmax).
+# =====================================================================================
+
 import random
 import re
 from typing import Any, Dict, List, Optional
