@@ -54,6 +54,11 @@ class TrainConfig(BaseModel):
     checkpointing_steps: int = 5000
     max_checkpoints_to_keep: int | None = None
     validation_steps: int = 50
+    early_stopping: bool = False
+    early_stopping_metric: str = "auto"
+    early_stopping_patience: int = 15
+    early_stopping_smooth_window: int = 5
+    early_stopping_min_steps: int = 0
 
     learning_rate: float = 1e-5
     # linear, cosine, cosine_with_restarts, polynomial, constant, constant_with_warmup

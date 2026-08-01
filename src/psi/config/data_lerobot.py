@@ -5,20 +5,56 @@ from pathlib import Path
 from psi.utils import resolve_data_path
 import os
 import json
+import random
 
 from psi.config.transform import ActionStateTransform
 class LerobotDataConfig(DataConfig):
     root_dir: str
     train_repo_ids: List[str] = Field(default_factory=list)
     val_repo_ids: List[str] = Field(default_factory=list)
+    val_episode_fraction: float | None = None
+    val_episodes: List[int] | None = None
+    val_episode_seed: int = 42
 
     @model_validator(mode="after")
     def check_repo_ids(self):
         if len(self.train_repo_ids) == 0:
             raise ValueError("train_repo_ids must be provided")
+        if self.val_episode_fraction is not None and self.val_episodes is not None:
+            raise ValueError("Only one of val_episode_fraction or val_episodes can be set")
+        if self.val_episode_fraction is not None and not 0 < self.val_episode_fraction < 1:
+            raise ValueError("val_episode_fraction must be between 0 and 1")
+        if (self.val_episode_fraction is not None or self.val_episodes is not None) and len(self.train_repo_ids) != 1:
+            raise ValueError("Episode splitting requires exactly one train_repo_id")
+        if self.val_episodes is not None and len(self.val_episodes) == 0:
+            raise ValueError("val_episodes must not be empty")
         if len(self.val_repo_ids) == 0:
             self.val_repo_ids = [self.train_repo_ids[0]]
+        if (self.val_episode_fraction is not None or self.val_episodes is not None) and self.val_repo_ids != self.train_repo_ids:
+            raise ValueError("Episode splitting requires train_repo_ids and val_repo_ids to match")
         return self
+
+    def episode_indices(self, split: str, total_episodes: int) -> List[int] | None:
+        if self.val_episode_fraction is None and self.val_episodes is None:
+            return None
+
+        if self.val_episodes is not None:
+            val_episodes = sorted(set(self.val_episodes))
+        else:
+            num_val_episodes = max(1, round(total_episodes * self.val_episode_fraction))  # type: ignore[arg-type]
+            val_episodes = sorted(random.Random(self.val_episode_seed).sample(range(total_episodes), num_val_episodes))
+
+        invalid_episodes = [episode for episode in val_episodes if episode < 0 or episode >= total_episodes]
+        if invalid_episodes:
+            raise ValueError(f"Validation episodes out of range: {invalid_episodes}")
+        if len(val_episodes) >= total_episodes:
+            raise ValueError("Episode split must leave at least one training episode")
+
+        print(f"LeRobot validation episodes: {val_episodes}")
+        if split == "val":
+            return val_episodes
+        val_episode_set = set(val_episodes)
+        return [episode for episode in range(total_episodes) if episode not in val_episode_set]
     
     @model_validator(mode="after")
     def load_stats(self):

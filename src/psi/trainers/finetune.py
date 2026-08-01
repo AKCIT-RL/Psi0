@@ -37,6 +37,10 @@ from psi.utils import flatten, shorten, move_to_device, rmse, seed_everything
 from psi.models.psi0 import Psi0Model
 
 class FinetuneTrainer(Trainer):
+    @property
+    def default_early_stopping_metric(self) -> str:
+        return "err_l1_hand_joints"
+
 
     def __init__(self, cfg, device: torch.device):
         super().__init__(cfg, device)

@@ -27,6 +27,7 @@ class LeRobotDatasetWrapper(torch.utils.data.Dataset):
         dataset_meta = LeRobotDatasetMetadata(first_repo, resolve_path(f"{data_cfg.root_dir}/{first_repo}"))
         assert isinstance(data_cfg.transform.repack, LerobotRepackTransform)
         delta_timestamps = data_cfg.transform.repack.delta_timestamps(dataset_meta.fps)
+        episodes = data_cfg.episode_indices(split, dataset_meta.total_episodes)
 
         if len(repo_ids) > 1:
             root_dir = data_cfg.root_dir
@@ -36,12 +37,24 @@ class LeRobotDatasetWrapper(torch.utils.data.Dataset):
             root_dir = resolve_path(f"{data_cfg.root_dir}/{first_repo}")
             lerobot_dataset_class = LeRobotDataset
 
-        self.base_dataset = lerobot_dataset_class(
-            repo_ids,# type: ignore
-            root=root_dir,
-            delta_timestamps=delta_timestamps, # type: ignore
-            image_transforms=None,
-        )
+        dataset_kwargs = {
+            "root": root_dir,
+            "delta_timestamps": delta_timestamps,
+            "image_transforms": None,
+        }
+        if episodes is not None:
+            dataset_kwargs["episodes"] = episodes
+        self.base_dataset = lerobot_dataset_class(repo_ids, **dataset_kwargs)  # type: ignore
+        if episodes is not None and len(self.base_dataset.episode_data_index["from"]) != dataset_meta.total_episodes:
+            compact_index = self.base_dataset.episode_data_index
+            expanded_index = {
+                key: torch.zeros(dataset_meta.total_episodes, dtype=values.dtype)
+                for key, values in compact_index.items()
+            }
+            for compact_episode, original_episode in enumerate(episodes):
+                for key in expanded_index:
+                    expanded_index[key][original_episode] = compact_index[key][compact_episode]
+            self.base_dataset.episode_data_index = expanded_index
         self._cache = {}
 
     def __getitem__(self, idx) -> dict:

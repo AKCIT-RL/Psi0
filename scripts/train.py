@@ -269,7 +269,14 @@ def train(config: LaunchConfig):
                     ):
                         eval_losses = trainer.evaluate()
                         if eval_losses is not None: # FIXME
-                            trainer.log(flatten(eval_losses, parent_key="eval")) 
+                            trainer.log_validation(flatten(eval_losses, parent_key="eval"))
+                            if config.train.early_stopping and trainer.update_early_stopping(eval_losses, global_step + 1):
+                                trainer.save_checkpoint(global_step + 1)
+                                overwatch.info(
+                                    f"Early stopping at step {global_step + 1}: "
+                                    f"best {trainer.early_stopping_metric}={trainer.early_stopping_state.best_value:.6g}"
+                                )
+                                is_max_train_steps_reached = True
                     trainer.set_train()
                     """ NOTE:
                         This is a workaround for iterating over val_dataloader in the middle of training_dataloader.
@@ -295,6 +302,9 @@ def train(config: LaunchConfig):
                 progress_bar.update()
                 progress_bar.set_postfix(dict(loss=losses["loss"], lr=nice(trainer.lr)))
                 global_step += 1
+
+                if is_max_train_steps_reached:
+                    break
 
             if global_step >= trainer.max_training_steps:
                 if overwatch.is_rank_zero():

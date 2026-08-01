@@ -28,6 +28,10 @@ from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 
 
 class DiffusionPolicyG1Trainer(Trainer):
+    @property
+    def default_early_stopping_metric(self) -> str:
+        return "val/denorm_err_l1_hand_joints"
+
     epoch_loss: list[float]
     _loss_cpu: float
 
@@ -163,16 +167,19 @@ class DiffusionPolicyG1Trainer(Trainer):
     def log(self, metrics: dict[str, float], start_time: Optional[float] = None) -> None:
         super().log(metrics, start_time)
 
-    def save_checkpoint(self, global_step: int) -> str:
-        saved_path = super().save_checkpoint(global_step)
+    def log_validation(self, metrics: dict[str, float]) -> None:
+        pass
 
+    def _save_checkpoint_extras(self, checkpoint_dir: str) -> None:
         if overwatch.is_rank_zero():
             ema_nets = self.unwrap_model()
-            self.ema.copy_to(ema_nets.parameters())
-            ema_nets_weights = ema_nets.state_dict()
-            torch.save(ema_nets_weights, os.path.join(saved_path, "ema_net.pth"))
-
-        return saved_path
+            self.ema.store(ema_nets.parameters())
+            try:
+                self.ema.copy_to(ema_nets.parameters())
+                torch.save(ema_nets.state_dict(), os.path.join(checkpoint_dir, "ema_net.pth"))
+            finally:
+                self.ema.restore(ema_nets.parameters())
+            torch.save(self.ema.state_dict(), os.path.join(checkpoint_dir, "ema_state.pth"))
 
     @torch.no_grad()
     def inference(self, eval_model, batch) -> torch.Tensor:
@@ -315,17 +322,19 @@ class DiffusionPolicyG1Trainer(Trainer):
         )
 
         # log metrics
+        metrics = {
+            "val/bc_loss": avg_val_loss,
+            **dict(
+                zip(
+                    labels_denormed, map(np.linalg.norm, avg_lr_action_err_denormed)
+                )
+            ),
+        }
         accelerator.log(
-            {
-                "val/bc_loss": avg_val_loss,
-                **dict(
-                    zip(
-                        labels_denormed, map(np.linalg.norm, avg_lr_action_err_denormed)
-                    )
-                ),
-            },
+            metrics,
             step=global_step + 1,
         )
+        return metrics
 
     def resume_from_checkpoint(self):
         initial_global_step, load_path = super().resume_from_checkpoint()
@@ -333,7 +342,11 @@ class DiffusionPolicyG1Trainer(Trainer):
         if load_path is not None:
             self.ema = EMAModel(parameters=self.unwrap_model().parameters(),
                 power=0.75)
-            self.ema.load_state_dict(torch.load(os.path.join(load_path, "ema_net.pth")))
+            ema_state_path = os.path.join(load_path, "ema_state.pth")
+            if os.path.exists(ema_state_path):
+                self.ema.load_state_dict(torch.load(ema_state_path))
+            else:
+                overwatch.warning(f"EMA state not found in legacy checkpoint {load_path}; reinitializing EMA")
 
         return initial_global_step, load_path
 
@@ -348,13 +361,6 @@ class DiffusionPolicyG1Trainer(Trainer):
         return {"loss": loss_dict["loss"]}
 
     def finalize(self) -> None:
-        saved_path = super().save_checkpoint(self.global_step)
-
-        if overwatch.is_rank_zero():
-            ema_nets = self.unwrap_model()
-            self.ema.copy_to(ema_nets.parameters())
-            ema_nets_weights = ema_nets.state_dict()
-            torch.save(ema_nets_weights, os.path.join(saved_path, "ema_net.pth"))
-        
+        super().save_checkpoint(self.global_step)
         super().finalize()
         overwatch.info(f"Finalized DP Trainer. Epoch losses: {shorten(self.epoch_loss)}")

@@ -23,9 +23,49 @@ import datetime
 import accelerate
 import random
 import shutil
+import json
+import statistics
 
 from psi.utils import initialize_overwatch
 overwatch = initialize_overwatch(__name__)
+
+class EarlyStoppingState:
+    def __init__(self, patience: int, smooth_window: int, min_steps: int):
+        if patience < 0:
+            raise ValueError("early_stopping_patience must be non-negative")
+        if smooth_window < 1:
+            raise ValueError("early_stopping_smooth_window must be at least 1")
+        self.patience = patience
+        self.smooth_window = smooth_window
+        self.min_steps = min_steps
+        self.best_value = float("inf")
+        self.counter = 0
+        self.history: list[float] = []
+
+    def update(self, value: float, global_step: int) -> tuple[bool, bool, float]:
+        self.history.append(float(value))
+        self.history = self.history[-self.smooth_window:]
+        smoothed_value = statistics.median(self.history)
+        improved = smoothed_value < self.best_value
+        if improved:
+            self.best_value = smoothed_value
+            self.counter = 0
+        else:
+            self.counter += 1
+        should_stop = self.counter > self.patience and global_step >= self.min_steps
+        return improved, should_stop, smoothed_value
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "best_value": self.best_value,
+            "counter": self.counter,
+            "history": self.history,
+        }
+
+    def load_dict(self, state: dict[str, Any]) -> None:
+        self.best_value = float(state["best_value"])
+        self.counter = int(state["counter"])
+        self.history = [float(value) for value in state["history"]][-self.smooth_window:]
 
 def worker_init_fn(worker_id):
     # print(f"worker_init_fn called by worker {worker_id}")
@@ -59,6 +99,20 @@ class Trainer(ABC):
         # should read the timestamp from command line args instead
         # self.timestamp = datetime.datetime.now().strftime("%y%m%d%H%M")
         self.timestamp = self.cfg.timestamp
+        self.early_stopping_state = EarlyStoppingState(
+            patience=cfg.train.early_stopping_patience,
+            smooth_window=cfg.train.early_stopping_smooth_window,
+            min_steps=cfg.train.early_stopping_min_steps,
+        )
+
+    @property
+    def default_early_stopping_metric(self) -> str:
+        return "loss"
+
+    @property
+    def early_stopping_metric(self) -> str:
+        metric = self.cfg.train.early_stopping_metric
+        return self.default_early_stopping_metric if metric == "auto" else metric
 
     @classmethod
     def instantiate(
@@ -149,6 +203,9 @@ class Trainer(ABC):
         # wandb_dict.update({"train/grad_norm": grad_norm})
         # wandb_dict.update(self.get_log_kv())
         self.accelerator.log(wandb_dict, step=self.global_step) # WANDB logging
+
+    def log_validation(self, metrics: dict[str, Any]) -> None:
+        self.log(metrics)
 
     def create_optimizer_and_scheduler(self, num_training_steps: int | None = None):
         optimizer = self.create_optimizer()
@@ -388,6 +445,16 @@ class Trainer(ABC):
         self.accelerator = accelerator
         return self.train_dataloader # type: ignore
 
+    def _save_early_stopping_state(self, checkpoint_dir: str) -> None:
+        if not self.cfg.train.early_stopping or not self.early_stopping_state.history:
+            return
+        if self.accelerator.is_main_process:
+            with open(os.path.join(checkpoint_dir, "early_stopping_state.json"), "w") as state_file:
+                json.dump(self.early_stopping_state.to_dict(), state_file, indent=2)
+
+    def _save_checkpoint_extras(self, checkpoint_dir: str) -> None:
+        pass
+
     def save_checkpoint(self, global_step: int) -> str | None:
         save_dir = os.path.join(self.project_dir, "checkpoints")
         os.makedirs(save_dir, exist_ok=True)
@@ -395,6 +462,8 @@ class Trainer(ABC):
 
         self.accelerator.save_state(ckpt_dir)
         self.accelerator.wait_for_everyone()
+        self._save_early_stopping_state(ckpt_dir)
+        self._save_checkpoint_extras(ckpt_dir)
 
         if self.accelerator.is_main_process:
             # Keep only the latest max_checkpoints_to_keep checkpoints
@@ -424,6 +493,49 @@ class Trainer(ABC):
         self.accelerator.wait_for_everyone()
         return ckpt_dir
 
+    def save_best_checkpoint(self) -> str:
+        best_dir = os.path.join(self.project_dir, "checkpoints", "best")
+        if self.accelerator.is_main_process and os.path.exists(best_dir):
+            shutil.rmtree(best_dir)
+        self.accelerator.wait_for_everyone()
+        self.accelerator.save_state(best_dir)
+        self.accelerator.wait_for_everyone()
+        self._save_early_stopping_state(best_dir)
+        self._save_checkpoint_extras(best_dir)
+        self.accelerator.wait_for_everyone()
+        return best_dir
+
+    def update_early_stopping(self, metrics: dict[str, float], global_step: int) -> bool:
+        metric_name = self.early_stopping_metric
+        if metric_name in metrics:
+            metric_value = float(metrics[metric_name])
+        else:
+            loss_name = "loss" if "loss" in metrics else "val/bc_loss"
+            metric_value = float(metrics[loss_name])
+            overwatch.warning(
+                f"Early stopping metric '{metric_name}' was not returned; using '{loss_name}'."
+            )
+
+        improved, should_stop, smoothed_value = self.early_stopping_state.update(metric_value, global_step)
+        state = self.early_stopping_state
+        overwatch.info(
+            f"Early stopping '{metric_name}': value={metric_value:.6g}, median={smoothed_value:.6g}, "
+            f"best={state.best_value:.6g}, counter={state.counter}/{state.patience}"
+        )
+        self.accelerator.log(
+            {
+                "early_stopping/metric": metric_value,
+                "early_stopping/median": smoothed_value,
+                "early_stopping/best": state.best_value,
+                "early_stopping/counter": state.counter,
+            },
+            step=global_step,
+        )
+        if improved:
+            best_dir = self.save_best_checkpoint()
+            overwatch.info(f"Saved new best checkpoint to {best_dir}")
+        return should_stop
+
     def resume_from_checkpoint(self) -> tuple[int, Optional[str]]:
         """ resume from a checkpoint if specified in the config. 
             the checkpoint path can be either:
@@ -434,12 +546,18 @@ class Trainer(ABC):
         if self.cfg.train.resume_from_checkpoint is None:
             return 0, None
 
-        if "ckpt_" in self.cfg.train.resume_from_checkpoint:
-            path = os.path.basename(self.cfg.train.resume_from_checkpoint)
+        resume_path = self.cfg.train.resume_from_checkpoint
+        if os.path.basename(resume_path).startswith("ckpt_"):
+            path = os.path.basename(resume_path)
+            load_path = resume_path
         else:
-            if os.path.exists(f"{self.cfg.train.resume_from_checkpoint}/checkpoints"):
+            load_path = None
+            if os.path.exists(f"{resume_path}/checkpoints"):
                 # Get the most recent checkpoint
-                dirs = os.listdir(f"{self.cfg.train.resume_from_checkpoint}/checkpoints")
+                dirs = [
+                    directory for directory in os.listdir(f"{resume_path}/checkpoints")
+                    if directory.startswith("ckpt_")
+                ]
                 dirs = sorted(dirs, key=lambda x: int(x.split("_")[1]))
                 path = dirs[-1] if len(dirs) > 0 else None
             else:
@@ -453,10 +571,15 @@ class Trainer(ABC):
             initial_global_step = 0
             load_path = None
         else:
-            load_path = os.path.join(self.cfg.train.resume_from_checkpoint, "checkpoints", path)
+            load_path = load_path or os.path.join(resume_path, "checkpoints", path)
             overwatch.info(f"Resuming from checkpoint {load_path}")
             self.accelerator.load_state(load_path)
             initial_global_step = int(path.split("_")[1]) + 1 # prevent from saving to the same checkpoint again
+            early_stopping_path = os.path.join(load_path, "early_stopping_state.json")
+            if os.path.exists(early_stopping_path):
+                with open(early_stopping_path, "r") as state_file:
+                    self.early_stopping_state.load_dict(json.load(state_file))
+                overwatch.info(f"Restored early stopping state from {early_stopping_path}")
 
         return initial_global_step, load_path
 
