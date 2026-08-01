@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import traceback
 from dataclasses import dataclass
 from typing import Any
 
@@ -115,7 +116,15 @@ class Server:
         right_hand = proprio[..., 36:43]
         left_arm = proprio[..., 15:22]
         right_arm = proprio[..., 22:29]
-        rpy = np.concatenate([proprio[..., 13:15], proprio[..., 12:13]], axis=-1)
+        # state.rpy is trained as the PREVIOUSLY COMMANDED torso rpy, taken from the AMO
+        # policy command (channels 3:6 are yaw,pitch,roll -> reversed to roll,pitch,yaw);
+        # see SIMPLE scripts/postprocess_psi0.py::build_proprio_obs. Reading the measured
+        # waist joints (proprio[12:15]) instead fed the model a different physical
+        # quantity than it was trained on.
+        # NOTE: `amo_policy_command` must be the command from the PREVIOUS control step.
+        # .copy() because the reversed slice is a negative-stride view and
+        # torch.from_numpy() rejects those.
+        rpy = command[..., 3:6][..., ::-1].copy()
         height = command[..., 6:7]
         base_height_cmd = command[..., 6:7]
 
@@ -132,9 +141,18 @@ class Server:
     @staticmethod
     def _action_to_psi_format(action: dict[str, Any]) -> np.ndarray:
         def _pick(key: str) -> np.ndarray:
-            raw = action.get(key) or action.get(f"action.{key}")
+            # NOTE: must not use `action.get(key) or action.get(...)` -- `or` evaluates
+            # bool() on the first operand, which raises ValueError ("truth value of an
+            # array with more than one element is ambiguous") for any real action chunk.
+            # That path stayed dormant only because Gr00tSimPolicyWrapper prefixes its
+            # output keys with "action.", making the first lookup return None.
+            raw = action.get(key)
             if raw is None:
-                raise KeyError(f"Missing action key '{key}'")
+                raw = action.get(f"action.{key}")
+            if raw is None:
+                raise KeyError(
+                    f"Missing action key '{key}'. Available keys: {sorted(action)}"
+                )
             return Server._ensure_btd(np.asarray(raw, dtype=np.float32))
 
         left_hand = _pick("left_hand")
@@ -253,7 +271,14 @@ class Server:
             response = ResponseMessage(psi_action, 0.0)
             return JSONResponse(content=response.serialize())
         except Exception as exc:
-            return JSONResponse(content={"status": str(exc)})
+            # Return a real error status. Answering 200 with {"status": "<message>"} made
+            # every inference failure look like a successful response to the client, which
+            # then had no action field to read -- failures were effectively invisible.
+            traceback.print_exc()
+            return JSONResponse(
+                status_code=500,
+                content={"error": type(exc).__name__, "detail": str(exc)},
+            )
 
     def run(self, host: str = "0.0.0.0", port: int = 5555) -> None:
         app = FastAPI()
