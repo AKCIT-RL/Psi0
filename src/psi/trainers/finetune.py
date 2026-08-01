@@ -480,7 +480,7 @@ class FinetuneTrainer(Trainer):
                 self.val_dataloader.end() # type: ignore
                 break
 
-        avg_val_loss = torch.cat(val_loss_list).mean().item()
+        avg_val_loss = torch.stack([v.reshape(-1) for v in val_loss_list]).mean().item()
         action_l1_err_list = np.concatenate(action_l1_err_list, axis=0)  # (len_val_dataset*Ta, Da)
         action_l1_err_list_denormed = (
             self.maxmin.denormalize_L1_action_err( # type: ignore FIXME

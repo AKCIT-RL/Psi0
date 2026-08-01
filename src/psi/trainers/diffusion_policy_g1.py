@@ -279,7 +279,7 @@ class DiffusionPolicyG1Trainer(Trainer):
                     self.val_dataloader.end() # type: ignore
                 break
 
-        avg_val_loss = torch.cat(val_loss_list).mean().item()
+        avg_val_loss = torch.stack(val_loss_list).mean().item()
         action_l1_err_list = np.concatenate(action_l1_err_list, axis=0)  # (N, Da)
         action_l1_err_list_denormed = (
             self.data_cfg.transform.field.denormalize_L1_action_err(

@@ -250,21 +250,23 @@ export DS_SKIP_CUDA_CHECK=1
 
 cd "$REPO_ROOT"
 
-# Resolve torchrun: prefer venv-local binary, fall back to python -m torch.distributed.run
-if command -v torchrun &>/dev/null; then
-    TORCHRUN="torchrun"
-elif [[ -x "$(dirname "$(command -v python)")/torchrun" ]]; then
-    TORCHRUN="$(dirname "$(command -v python)")/torchrun"
-else
-    TORCHRUN="python -m torch.distributed.run"
+# Avoid initializing NCCL for a single GPU (required on GB10/DGX Spark).
+# For multiple GPUs, use torchrun as before.
+LAUNCHER=(python scripts/train.py)
+if [[ "$NPROC_PER_NODE" -gt 1 ]]; then
+    if command -v torchrun &>/dev/null; then
+        LAUNCHER=(torchrun)
+    elif [[ -x "$(dirname "$(command -v python)")/torchrun" ]]; then
+        LAUNCHER=("$(dirname "$(command -v python)")/torchrun")
+    else
+        LAUNCHER=(python -m torch.distributed.run)
+    fi
+    LAUNCHER+=(--nproc_per_node="$NPROC_PER_NODE" --master_port=29500 scripts/train.py)
 fi
-echo "    Using launcher: $TORCHRUN"
+echo "    Using launcher: ${LAUNCHER[*]}"
 echo ""
 
-$TORCHRUN \
-    --nproc_per_node="$NPROC_PER_NODE" \
-    --master_port=29500 \
-    scripts/train.py \
+"${LAUNCHER[@]}" \
     finetune_real_psi0_config \
     --seed=292285 \
     --exp="$EXP" \
