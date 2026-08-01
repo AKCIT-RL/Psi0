@@ -241,6 +241,48 @@ class Gr00tTrainer(Trainer):
 
         return torch.utils.data.DataLoader(self.train_dataset, **dataloader_params)
 
+    def get_eval_dataloader(self, eval_dataset=None):  # noqa: D401
+        """Return a plain eval dataloader that uses the same collator as training.
+
+        The default ``Trainer.get_eval_dataloader`` wraps the dataloader with
+        ``accelerator.prepare(...)``. For our ``IterableDataset`` this installs a
+        ``DataLoaderDispatcher`` that fetches an already-collated batch and then
+        re-slices every tensor along dim 0 to distribute it across processes /
+        re-batch it. That logic assumes dim 0 is the batch dimension for *all*
+        tensors, which is false for Qwen3-VL: the collator flattens images so
+        ``pixel_values`` has dim 0 == total number of patches (e.g. 512) while
+        ``image_grid_thw`` / ``input_ids`` have dim 0 == batch size (e.g. 2).
+        The dispatcher therefore slices ``pixel_values`` down to the batch size,
+        and the visual encoder later crashes with::
+
+            hidden_states (2, ...) + pos_embeds (512, ...)  -> size mismatch
+
+        Building a plain ``DataLoader`` (mirroring ``get_train_dataloader``) lets
+        our collator produce the correctly-flattened batch and feeds it to the
+        model untouched, exactly like the training path.
+        """
+        if eval_dataset is None and self.eval_dataset is None:
+            raise ValueError("Trainer: evaluation requires an eval_dataset.")
+
+        eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
+
+        data_collator = self.data_collator
+        data_collator = self._get_collator_with_removed_columns(
+            data_collator, description="evaluation"
+        )
+
+        # Use num_workers=0 for eval: the eval dataset typically has far fewer shards
+        # than num_workers, causing some workers to get an empty shard schedule and
+        # crash with IndexError in ShardedMixtureDataset.cache_next_shard.
+        dataloader_params = {
+            "batch_size": self.args.eval_batch_size,
+            "collate_fn": data_collator,
+            "num_workers": 0,
+            "pin_memory": self.args.dataloader_pin_memory,
+        }
+
+        return torch.utils.data.DataLoader(eval_dataset, **dataloader_params)
+
     def train(
         self,
         resume_from_checkpoint=None,
