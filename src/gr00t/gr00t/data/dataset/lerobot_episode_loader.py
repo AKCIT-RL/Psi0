@@ -239,6 +239,32 @@ class LeRobotEpisodeLoader:
         """Return number of episodes in dataset."""
         return len(self.episodes_metadata)
 
+    def _check_slice_bounds(
+        self,
+        modality_type: str,
+        group_name: str,
+        original_key: str,
+        start_idx: int,
+        end_idx: int,
+        source_dim: int,
+    ) -> None:
+        """Verify a modality.json slice actually fits inside its source column.
+
+        numpy silently truncates out-of-range slices, so a modality.json that does not
+        match the dataset produces short or empty joint groups instead of an error, and
+        training proceeds on a corrupted state/action layout. This turns that into a
+        hard failure at load time.
+        """
+        if start_idx < 0 or end_idx > source_dim or end_idx <= start_idx:
+            raise ValueError(
+                f"{self.dataset_path}: modality.json declares "
+                f"{modality_type}.{group_name} = {original_key}[{start_idx}:{end_idx}] "
+                f"({end_idx - start_idx} dims), but '{original_key}' has only {source_dim} dims. "
+                f"The slice would silently yield "
+                f"{max(0, min(end_idx, source_dim) - start_idx)} dims. "
+                f"modality.json does not match this dataset."
+            )
+
     def _extract_joint_groups(
         self,
         df: pd.DataFrame,
@@ -268,14 +294,33 @@ class LeRobotEpisodeLoader:
                 start_idx = group_info["start"]
                 end_idx = group_info["end"]
                 original_key = group_info.get("original_key", DEFAULT_COLUMN_NAMES[modality_type])
+                if original_key not in df.columns:
+                    raise KeyError(
+                        f"{self.dataset_path}: modality.json maps {modality_type}.{group_name} to "
+                        f"column '{original_key}', which is not in the parquet data. "
+                        f"Available columns: {sorted(df.columns)}"
+                    )
                 # Slice the array data for this joint group
                 if isinstance(df[original_key].iloc[0], np.ndarray):
+                    # Out-of-range slices are silently truncated by numpy, which would feed the
+                    # model a shorter (or empty) vector than modality.json declares. Fail loudly
+                    # instead: this always means modality.json does not match the dataset.
+                    self._check_slice_bounds(
+                        modality_type,
+                        group_name,
+                        original_key,
+                        start_idx,
+                        end_idx,
+                        len(df[original_key].iloc[0]),
+                    )
                     joint_data[group_name] = df[original_key].map(lambda x: x[start_idx:end_idx])
                 else:
                     joint_data[group_name] = df[original_key]  # for strings and scalars
             else:
-                print(
-                    f"Warning: Joint group '{group_name}' not found in {modality_type} modality. Available groups: {list(modality_info.keys())}"
+                raise KeyError(
+                    f"{self.dataset_path}: joint group '{group_name}' requested by the modality "
+                    f"config is not declared under '{modality_type}' in modality.json. "
+                    f"Declared groups: {list(modality_info.keys())}"
                 )
 
         return joint_data
@@ -405,6 +450,19 @@ class LeRobotEpisodeLoader:
                 start_idx, end_idx = (
                     self.modality_meta[modality][joint_key]["start"],
                     self.modality_meta[modality][joint_key]["end"],
+                )
+                if stats_key not in self.stats:
+                    raise KeyError(
+                        f"{self.dataset_path}: no statistics for '{stats_key}' "
+                        f"(needed by {modality}.{joint_key}). Available: {sorted(self.stats)}"
+                    )
+                self._check_slice_bounds(
+                    modality,
+                    joint_key,
+                    stats_key,
+                    start_idx,
+                    end_idx,
+                    len(self.stats[stats_key]["mean"]),
                 )
                 for stat_type in self.stats[stats_key].keys():  # mean, std, min, max, q01, q99
                     dataset_statistics[modality][joint_key][stat_type] = self.stats[stats_key][
