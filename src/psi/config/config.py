@@ -35,6 +35,8 @@ class TrainConfig(BaseModel):
     name: str = "human3d"  # "vqvae"
     resume_from_checkpoint: str | None = None
     skip_resumed_steps: bool = False
+    hand_loss_weight: float = 1.0
+    hand_action_dims: list[int] = Field(default_factory=lambda: list(range(14)))
 
     # HF Hub Credentials (for any gated models)
     hf_token: str | Path = Path(".hf_token")  # Environment variable or Path to HF Token

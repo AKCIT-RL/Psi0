@@ -367,7 +367,7 @@ class DiffusionPolicyModel(nn.Module):
         self.vision_encoder = vision_encoder
         self.noise_pred_net = noise_pred_net
 
-    def forward(self, nimage, nagent_pos, naction) -> BatchFeature:
+    def forward(self, nimage, nagent_pos, naction, loss_reduction: str = "mean") -> BatchFeature:
         device = naction.device
         B = naction.shape[0]
 
@@ -404,7 +404,7 @@ class DiffusionPolicyModel(nn.Module):
         )
 
         # L2 loss
-        loss = nn.functional.mse_loss(noise_pred, noise)
+        loss = nn.functional.mse_loss(noise_pred, noise, reduction=loss_reduction)
         return BatchFeature({"loss": loss})
     
 

@@ -17,6 +17,7 @@ from psi.config.data_lerobot import LerobotDataConfig #PushTDataConfig,
 from psi.config.model_dp import DiffusionPolicyModelConfig
 from dp.models.diffusion_policy import DiffusionPolicyModel #, ConditionalUnet1D, get_resnet, replace_bn_with_gn
 from psi.trainers import Trainer
+from psi.trainers.loss_utils import apply_action_dim_weights
 
 from psi.utils import flatten, shorten, initialize_overwatch,rmse, seed_everything
 from psi.utils.utils import batch_str_to_tensor
@@ -143,8 +144,7 @@ class DiffusionPolicyG1Trainer(Trainer):
             naction = batch['action']
             # naction_pad = batch['action_is_pad']
 
-            output = self.model(nimage, nagent_pos, naction)
-            loss = output.loss
+            loss = self._forward_loss(self.model, nimage, nagent_pos, naction)
 
             # optimize
             self.accelerator.backward(loss)
@@ -356,9 +356,23 @@ class DiffusionPolicyG1Trainer(Trainer):
         naction = batch["action"]  # (B, pred_horizon, action_dim)
         # naction_pad = batch["action_is_pad"]  # (B, pred_horizon)
 
-        loss_dict = model.forward(nimage, nagent_pos, naction)
-        
-        return {"loss": loss_dict["loss"]}
+        return {"loss": self._forward_loss(model, nimage, nagent_pos, naction)}
+
+    def _forward_loss(self, model, nimage, nagent_pos, naction) -> torch.Tensor:
+        if self.train_cfg.hand_loss_weight == 1.0:
+            return model(nimage, nagent_pos, naction).loss
+
+        elementwise_loss = model(
+            nimage,
+            nagent_pos,
+            naction,
+            loss_reduction="none",
+        ).loss
+        return apply_action_dim_weights(
+            elementwise_loss,
+            self.train_cfg.hand_loss_weight,
+            self.train_cfg.hand_action_dims,
+        ).mean()
 
     def finalize(self) -> None:
         super().save_checkpoint(self.global_step)

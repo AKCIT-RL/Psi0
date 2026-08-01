@@ -32,6 +32,7 @@ overwatch = initialize_overwatch(__name__)
 
 # from .base import Trainer
 from .trainer import Trainer, worker_init_fn
+from .loss_utils import apply_action_dim_weights
 
 from psi.utils import flatten, shorten, move_to_device, rmse, seed_everything
 from psi.models.psi0 import Psi0Model
@@ -587,6 +588,11 @@ class FinetuneTrainer(Trainer):
         loss_action = F.mse_loss(
             action_pred.float(), target_action.float(), reduction="none"
         )  # (B, Tp, Da)
+        loss_action = apply_action_dim_weights(
+            loss_action,
+            self.train_cfg.hand_loss_weight,
+            self.train_cfg.hand_action_dims,
+        )
         """  
             sum(1) -> to keep gradient consistent when training with different action chunks
             mean(0) -> to average over the batch
