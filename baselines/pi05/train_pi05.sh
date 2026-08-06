@@ -19,4 +19,5 @@ torchrun --standalone --nnodes=1 --nproc_per_node=$NPROC_PER_NODE src/openpi/tra
         $task \
         --exp_name=$task \
         --save_interval=10000 \
-        --checkpoint_base_dir=.runs/openpi-05
+        --checkpoint_base_dir=.runs/openpi-05 \
+        --num_workers=4 

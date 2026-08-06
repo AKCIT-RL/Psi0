@@ -22,6 +22,8 @@ Multi-Node Training:
     scripts/train_pytorch.py <config_name> --exp_name=<run_name> --save_interval <interval>
 
 """
+from datetime import timedelta
+
 from dotenv import load_dotenv
 assert load_dotenv(), "Failed to load .env file. Make sure it exists and contains the necessary environment variables."
 
@@ -98,15 +100,23 @@ def init_wandb(config: _config.TrainConfig, *, resuming: bool, enabled: bool = T
 def setup_ddp():
     world_size = int(os.environ.get("WORLD_SIZE", "1"))
     use_ddp = world_size > 1
+    local_rank = int(os.environ.get("LOCAL_RANK", os.environ.get("RANK", "0")))
     if use_ddp and not torch.distributed.is_initialized():
         backend = "nccl" if torch.cuda.is_available() else "gloo"
-        torch.distributed.init_process_group(backend=backend, init_method="env://")
+        
+        os.environ['NCCL_BLOCKING_WAIT'] = '0'  # not to enforce timeout
+        os.environ['TORCH_NCCL_BLOCKING_WAIT'] = '0'
+
+        torch.distributed.init_process_group(backend=backend, init_method="env://",
+                                             timeout=timedelta(seconds=7200000), # was 1800000
+                                            rank=local_rank,
+                                            world_size=world_size
+                                            )
 
         # Set up debugging environment variables for DDP issues
         if os.environ.get("TORCH_DISTRIBUTED_DEBUG") is None:
             os.environ["TORCH_DISTRIBUTED_DEBUG"] = "INFO"
 
-    local_rank = int(os.environ.get("LOCAL_RANK", os.environ.get("RANK", "0")))
     device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
     if torch.cuda.is_available():
         torch.cuda.set_device(device)

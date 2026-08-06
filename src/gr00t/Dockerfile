@@ -48,6 +48,12 @@ COPY pyproject.toml uv.lock ./
 
 RUN UV_PROJECT_ENVIRONMENT=/opt/venv uv sync --frozen --no-install-project
 
+# Serving dependencies (installed separately to keep the lock file stable)
+RUN uv pip install --python /opt/venv/bin/python \
+    "fastapi>=0.115.0" \
+    "uvicorn[standard]>=0.34.0" \
+    "httpx>=0.28.0"
+
 # ── Install bitsandbytes (8-bit Adam, needed for 24 GB VRAM) ──────────────────
 RUN uv pip install bitsandbytes
 

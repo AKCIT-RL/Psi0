@@ -1,0 +1,86 @@
+{
+  "state": {
+    "left_hand": {
+      "start": 0,
+      "end": 7,
+      "original_key": "states"
+    },
+    "right_hand": {
+      "start": 7,
+      "end": 14,
+      "original_key": "states"
+    },
+    "left_arm": {
+      "start": 14,
+      "end": 21,
+      "original_key": "states"
+    },
+    "right_arm": {
+      "start": 21,
+      "end": 28,
+      "original_key": "states"
+    },
+    "rpy": {
+      "start": 28,
+      "end": 31,
+      "original_key": "states"
+    },
+    "height": {
+      "start": 31,
+      "end": 32,
+      "original_key": "states"
+    }
+  },
+  "action": {
+    "left_hand": {
+      "start": 0,
+      "end": 7
+    },
+    "right_hand": {
+      "start": 7,
+      "end": 14
+    },
+    "left_arm": {
+      "start": 14,
+      "end": 21
+    },
+    "right_arm": {
+      "start": 21,
+      "end": 28
+    },
+    "rpy": {
+      "start": 28,
+      "end": 31
+    },
+    "height": {
+      "start": 31,
+      "end": 32
+    },
+    "torso_vx": {
+      "start": 32,
+      "end": 33
+    },
+    "torso_vy": {
+      "start": 33,
+      "end": 34
+    },
+    "torso_vyaw": {
+      "start": 34,
+      "end": 35
+    },
+    "target_yaw": {
+      "start": 35,
+      "end": 36
+    }
+  },
+  "video": {
+    "rs_view": {
+      "original_key": "observation.images.egocentric"
+    }
+  },
+  "annotation": {
+    "human.task_description": {
+      "original_key": "task_index"
+    }
+  }
+}

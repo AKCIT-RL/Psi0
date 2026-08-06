@@ -3,7 +3,7 @@ name = "psi"
 version = "0.0.0"
 description = "Psi: towards humanoid foundation model"
 readme = "README.md"
-requires-python = "==3.10.*"
+requires-python = ">=3.10"
 dependencies = [
     "albumentations==1.4.18",
     "datasets==3.6.0",
@@ -28,6 +28,32 @@ dependencies = [
     "simplejpeg>=1.9.0",
     "dotenv",
     "gdown>=5.2.0",
+    "torchrun>=0.2.9",
+    "accelerate>=1.7.0",
+    "torchvision>=0.26.0",
+    "diffusers>=0.37.1",
+    "qwen-vl-utils>=0.0.14",
+    "lerobot @ git+https://github.com/huggingface/lerobot.git@f39652707caed42a7cd5ab36066da5663b9565eb",
+    "av>=16.0.1",
+    "jaxtyping>=0.2.36",
+]
+
+[project.optional-dependencies]
+cuda13 = [
+    "torch>=2.11.0",
+    "torchvision",
+    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn-2.8.3+cu130torch2.11-cp312-cp312-linux_x86_64.whl ; python_version >= '3.12' and sys_platform == 'linux' and platform_machine == 'x86_64' and extra == 'cuda13'",
+    "torchcodec @ https://download.pytorch.org/whl/cu130/torchcodec-0.11.1%2Bcu130-cp310-cp310-manylinux_2_28_x86_64.whl ; python_version == '3.10' and sys_platform == 'linux' and platform_machine == 'x86_64' and extra == 'cuda13'",
+    "torchcodec @ https://download.pytorch.org/whl/cu130/torchcodec-0.11.1%2Bcu130-cp312-cp312-manylinux_2_28_x86_64.whl ; python_version >= '3.12' and sys_platform == 'linux' and platform_machine == 'x86_64' and extra == 'cuda13'",
+]
+
+cuda12 = [
+    "torch>=2.10.0",
+    "torchvision",
+    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.17/flash_attn-2.6.3+cu126torch2.12-cp310-cp310-linux_x86_64.whl ; python_version == '3.10' and sys_platform == 'linux' and platform_machine == 'x86_64' and extra == 'cuda12'",
+    # Add CUDA 12 wheel URLs here (cu12x), split by Python version as needed.
+    "torchcodec @ https://download.pytorch.org/whl/cu126/torchcodec-0.10.0%2Bcu126-cp310-cp310-manylinux_2_28_x86_64.whl ; python_version == '3.10' and sys_platform == 'linux' and platform_machine == 'x86_64' and extra == 'cuda12'",
+    "torchcodec @ https://download.pytorch.org/whl/cu126/torchcodec-0.10.0%2Bcu126-cp312-cp312-manylinux_2_28_x86_64.whl ; python_version >= '3.12' and sys_platform == 'linux' and platform_machine == 'x86_64' and extra == 'cuda12'",
 ]
 
 [build-system]
@@ -40,7 +66,44 @@ psi = ["assets/*"]
 [tool.uv.sources]
 psi = { path = ".", editable = true }
 simple = { path = "third_party/SIMPLE", editable = true }
-nvidia-curobo = { path = "third_party/SIMPLE/third_party/curobo", editable = true }
+#nvidia-curobo = { path = "third_party/SIMPLE/third_party/curobo", editable = true }
+torch = [
+    { index = "pytorch-cu126", extra = "cuda12" },
+    { index = "pytorch-cu130", extra = "cuda13" },
+]
+torchvision = [
+    { index = "pytorch-cu126", extra = "cuda12" },
+    { index = "pytorch-cu130", extra = "cuda13" },
+]
+
+[tool.uv]
+conflicts = [
+    [
+        { extra = "cuda12" },
+        { extra = "cuda13" },
+    ],
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+# Required for --group simple: nvidia-curobo, isaacsim
+[[tool.uv.index]]
+name = "pypi-nvidia"
+url = "https://pypi.nvidia.com/"
+explicit = false
 
 [tool.uv.workspace]
 members = ["packages/*"]
@@ -61,23 +124,22 @@ viz = [
 
 psi = [
     "setuptools>=61",
-    "torch==2.7.0",
-    "torchvision==0.22.0",
-    "torchcodec==0.4.0",
     "transformers==4.57.0",
     "deepspeed==0.17.1",
     # "flash_attn==2.7.4.post1",
-    "triton==3.3.0",
+    "triton>=3.6.0",
     "accelerate==1.7.0",
     "peft==0.17.1",
     "qwen-vl-utils==0.0.14",
     "sentencepiece",
-    "lerobot @ git+https://github.com/songlin/lerobot.git@09929d8057b044b53aecaf5c6d7eb71f99e8beb9"
+    #"lerobot @ git+https://github.com/songlin/lerobot.git@09929d8057b044b53aecaf5c6d7eb71f99e8beb9"
 ]
 
+# --group simple is CUDA 12.x / Python 3.10 only (IsaacSim 4.5 constraint).
+# Use: VIRTUAL_ENV=.venv-psi uv sync --active --extra cuda12 --group simple
 simple = [
-   "simple[full]",
-   "nvidia-curobo[isaacsim]",
+    "simple[full] ; python_version == '3.10' and sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "nvidia-curobo[isaacsim] ; python_version == '3.10' and sys_platform == 'linux' and platform_machine == 'x86_64'",
 ]
 
 [tool.uv.extra-build-dependencies]

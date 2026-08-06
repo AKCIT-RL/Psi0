@@ -101,14 +101,17 @@ def run(config: Config):
     warn_configs(config)
 
     """Main training function."""
-    # If using distributed training, initialize the process group
+    # If using distributed training, initialize the process group.
+    # We use "cuda:nccl,cpu:gloo" so that accelerate's eval DataLoaderDispatcher
+    # can broadcast CPU tensors via gloo without crashing.
     if dist.is_initialized():
         global_rank = dist.get_rank()
-    elif "WORLD_SIZE" in os.environ and int(os.environ["WORLD_SIZE"]) > 1:
-        dist.init_process_group(backend="nccl")
-        # only meaningful for torchrun, for ray it is always 0
+    elif "LOCAL_RANK" in os.environ:
+        # torchrun sets LOCAL_RANK for both single- and multi-GPU runs.
         local_rank = int(os.environ["LOCAL_RANK"])
         torch.cuda.set_device(local_rank)
+        backend = "cuda:nccl,cpu:gloo" if torch.cuda.is_available() else "gloo"
+        dist.init_process_group(backend=backend)
         global_rank = dist.get_rank()
     else:
         local_rank = 0

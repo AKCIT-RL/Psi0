@@ -138,12 +138,14 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 Set up the $\Psi_0$ environment:
 
-> ℹ️ We manage the $\Psi_0$ environment and all the baselines through `uv` and they all share the same `src/` code.  See [Environment Management](baselines/README.md) for more details.
+> ℹ️ We manage the $\Psi_0$ environment and all the baselines through `uv` and they all share the same `src/` code.
 
-```
+**CUDA 12 / Python 3.10** (default, tested on RTX 3090/4090):
+```bash
 uv venv .venv-psi --python 3.10
 source .venv-psi/bin/activate
 GIT_LFS_SKIP_SMUDGE=1 uv sync \
+  --extra cuda12 \
   --group serve \
   --group viz \
   --group psi \
@@ -152,11 +154,29 @@ GIT_LFS_SKIP_SMUDGE=1 uv sync \
 uv pip install flash_attn==2.7.4.post1 --no-build-isolation
 ```
 
+**CUDA 13 / Python 3.12** (RTX 5090 / Blackwell):
+```bash
+uv venv .venv-psi --python 3.12
+source .venv-psi/bin/activate
+GIT_LFS_SKIP_SMUDGE=1 uv sync \
+  --extra cuda13 \
+  --group serve \
+  --group viz \
+  --group psi \
+  --index-strategy unsafe-best-match \
+  --active
+uv pip install flash_attn --no-build-isolation
+```
+
 > If you want to support `SIMPLE` evaluation, you can use the following commands to install `SIMPLE` along with `Psi0`. See also [quickstart](examples/quick_start/psi.md).
 
-```
+```bash
 git submodule update --init --recursive
-GIT_LFS_SKIP_SMUDGE=1 uv sync --all-groups --index-strategy unsafe-best-match --active
+GIT_LFS_SKIP_SMUDGE=1 uv sync \
+  --extra cuda12 \
+  --all-groups \
+  --index-strategy unsafe-best-match \
+  --active
 uv pip install flash_attn==2.7.4.post1 --no-build-isolation
 UV_PROJECT_ENVIRONMENT=${pwd}/.venv-psi ./scripts/install_curobo.sh
 ```
@@ -319,9 +339,20 @@ For detailed real-world deployment environment setup, please also refer to the d
 <a id="groot-n16"></a>
 
 ### GR00T
-Install the env 
+Each baseline has its own `pyproject.toml` with `cuda12` and `cuda13` extras, all resolved independently from the main env.
+
+Install the env (CUDA 12 / Python 3.10):
 ```bash
-cd src/gr00t; uv sync
+uv venv .venv-gr00t --python 3.10
+source .venv-gr00t/bin/activate
+uv sync --active --directory src/gr00t --extra cuda12
+```
+
+Install the env (CUDA 13 / Python 3.12):
+```bash
+uv venv .venv-gr00t --python 3.12
+source .venv-gr00t/bin/activate
+uv sync --active --directory src/gr00t --extra cuda13
 ```
 1. training
 ```bash
@@ -346,9 +377,20 @@ cd src/gr00t
 
 ### OpenPI $\pi_{0.5}$
 
-Please see more detailed instructions here: [baselines/pi05](baselines/pi05/README.md).
+Install the env (CUDA 12 / Python 3.10 — only supported variant):
+```bash
+uv venv .venv-pi05 --python 3.10
+source .venv-pi05/bin/activate
+GIT_LFS_SKIP_SMUDGE=1 uv sync --active --directory baselines/pi05 --extra cuda12
+```
 
-> 📄 **Fine-tuning guide for new tasks** (environment setup, config, training, serving): [FINETUNE_PI05.md](FINETUNE_PI05.md)
+Apply the required `transformers` patch:
+```bash
+cp -r src/openpi/models_pytorch/transformers_replace/* \
+    .venv-pi05/lib/python3.10/site-packages/transformers/
+```
+
+Please see more detailed instructions here: [baselines/pi05](baselines/pi05/README.md).
 
 ### InternVLA-M1
 Install the env 

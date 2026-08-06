@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "gr00t"
 version = "0.1.0"
-requires-python = "==3.10.*"
+requires-python = ">=3.10"
 # Mirror the main repo's baseline dependencies so install behaves the same.
 dependencies = [
     "albumentations==1.4.18",
@@ -20,11 +20,10 @@ dependencies = [
     "pandas==2.2.3",
     "peft==0.17.1",
     "termcolor==3.2.0",
-    "torch==2.7.0",
-    "torchvision==0.22.0",
+    #"torch==2.7.0",
     "transformers==4.51.3",
     "tyro==0.9.17",
-    "flash-attn==2.7.4.post1",
+    #"flash-attn==2.7.4.post1",
     "click==8.1.8",
     "datasets==3.6.0",
     "einops==0.8.1",
@@ -33,19 +32,36 @@ dependencies = [
     "numpy==1.26.4",
     "omegaconf==2.3.0",
     "scipy==1.15.3",
-    "torchcodec==0.4.0",
+    #"torchcodec==0.4.0",
     "wandb==0.23.0",
     "pyzmq==27.0.1",
-    "deepspeed==0.17.6",
+    #"deepspeed==0.17.6",
+    # torch / torchvision / flash-attn added via cuda12 or cuda13 extras below
 ]
 
 [project.optional-dependencies]
+# Python 3.10 + CUDA 12.x
+cuda12 = [
+    "torch>=2.7.0",
+    "torchvision>=0.27.0",
+    "deepspeed==0.17.1",
+    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.17/flash_attn-2.6.3+cu126torch2.12-cp310-cp310-linux_x86_64.whl ; python_version == '3.10' and sys_platform == 'linux' and platform_machine == 'x86_64' and extra == 'cuda12'",
+]
+
+# Python 3.12 + CUDA 13.x
+cuda13 = [
+    "torch>=2.11.0 ; python_version >= '3.12'",
+    "torchvision>=0.21.0 ; python_version >= '3.12'",
+    "deepspeed==0.17.1 ; python_version >= '3.12'",
+    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn-2.8.3+cu130torch2.11-cp312-cp312-linux_x86_64.whl ; python_version >= '3.12' and sys_platform == 'linux' and platform_machine == 'x86_64' and extra == 'cuda13'",
+]
+
 dev = [
     "ruff",
     "ipython",
 ]
 tensorrt = [
-    "onnx>=1.20.0",
+#    "onnx>=1.20.0",
     "tensorrt>=10.14.1.48.post1",
 ]
 
@@ -54,10 +70,35 @@ where = ["."]
 include = ["gr00t*"]
 
 [tool.uv.sources]
-flash-attn = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.7cxx11abiTRUE-cp310-cp310-linux_x86_64.whl" }
+torch = [
+    { index = "pytorch-cu126", extra = "cuda12" },
+    { index = "pytorch-cu130", extra = "cuda13" },
+]
+torchvision = [
+    { index = "pytorch-cu126", extra = "cuda12" },
+    { index = "pytorch-cu130", extra = "cuda13" },
+]
+
+[tool.uv]
+conflicts = [
+    [
+        { extra = "cuda12" },
+        { extra = "cuda13" },
+    ],
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
 
 [tool.uv.extra-build-dependencies]
-flash-attn = ["torch==2.7.0", "numpy==1.26.4"]
+flash-attn = [{ requirement = "torch", match-runtime = true }]
 
 [tool.ruff]
 line-length = 100
