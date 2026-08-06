@@ -15,6 +15,7 @@
 #   VLM_CKPT_PATH          Override VLM backbone checkpoint path
 #   ACTION_CKPT_PATH       Override action header checkpoint path
 #   WANDB_DISABLED         Set to 1 to disable wandb logging
+#   RESUME_FROM_CHECKPOINT Resume from an existing checkpoint path
 
 set -euo pipefail
 
@@ -266,6 +267,12 @@ fi
 echo "    Using launcher: ${LAUNCHER[*]}"
 echo ""
 
+EXTRA_TRAIN_ARGS=()
+if [[ -n "${RESUME_FROM_CHECKPOINT:-}" ]]; then
+    EXTRA_TRAIN_ARGS+=(--train.resume-from-checkpoint="$RESUME_FROM_CHECKPOINT")
+    echo "    Resuming from: $RESUME_FROM_CHECKPOINT"
+fi
+
 "${LAUNCHER[@]}" \
     finetune_real_psi0_config \
     --seed=292285 \
@@ -318,4 +325,5 @@ echo ""
     --model.no-use_film \
     --model.no-combined_temb \
     --model.rtc \
-    --model.max-delay=8
+    --model.max-delay=8 \
+    "${EXTRA_TRAIN_ARGS[@]}"

@@ -20,6 +20,8 @@ log/
 playgrounds/
 TODO.md
 *.zip
+/exports/
+/orientacoes_cluster_HPC.pdf
 
 runs_old/
 tmp_dir/
