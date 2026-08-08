@@ -38,6 +38,7 @@ _lerobot_build
 .cache
 .data
 .logs
+logs/
 
 *.local.yaml
 

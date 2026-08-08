@@ -119,11 +119,11 @@ fi
 # ── 3. Activate virtual environment ───────────────────────────────────────────
 echo "[2/5] Activating Python environment..."
 
-if [[ -f "$REPO_ROOT/.venv-psi/bin/activate" ]]; then
+if [[ -f "$REPO_ROOT/.venv-psi/bin/activate" ]] && "$REPO_ROOT/.venv-psi/bin/python" -c "import torch" &>/dev/null; then
     # shellcheck source=/dev/null
     source "$REPO_ROOT/.venv-psi/bin/activate"
     echo "    Using: .venv-psi"
-elif [[ -f "$REPO_ROOT/.venv/bin/activate" ]]; then
+elif [[ -f "$REPO_ROOT/.venv/bin/activate" ]] && "$REPO_ROOT/.venv/bin/python" -c "import torch" &>/dev/null; then
     # shellcheck source=/dev/null
     source "$REPO_ROOT/.venv/bin/activate"
     echo "    Using: .venv"
@@ -204,6 +204,28 @@ echo "[4/5] Computing training hyperparameters..."
 
 TARGET_EPOCHS="${TARGET_EPOCHS:-50}"
 TRAIN_BATCH_SIZE="${TRAIN_BATCH_SIZE:-16}"
+VAL_EPISODE_FRACTION="${VAL_EPISODE_FRACTION:-}"
+
+# With a val split, epochs are counted over the training episodes only.
+# Mirrors the seed-42 sampling in psi.config.data_lerobot.LerobotDataConfig.
+TRAIN_FRAMES="$TOTAL_FRAMES"
+if [[ -n "$VAL_EPISODE_FRACTION" ]]; then
+    TRAIN_FRAMES=$(python3 - "$DATASET_PATH" "$VAL_EPISODE_FRACTION" <<'PYEOF'
+import json, random, sys
+path, frac = sys.argv[1], float(sys.argv[2])
+lengths = {}
+with open(path + "/meta/episodes.jsonl") as f:
+    for line in f:
+        ep = json.loads(line)
+        lengths[ep["episode_index"]] = ep["length"]
+total = len(lengths)
+num_val = max(1, round(total * frac))
+val = set(random.Random(42).sample(range(total), num_val))
+print(sum(n for i, n in lengths.items() if i not in val))
+PYEOF
+)
+    echo "    Val split         : $VAL_EPISODE_FRACTION of episodes (train frames: $TRAIN_FRAMES of $TOTAL_FRAMES)"
+fi
 
 # Detect GPU count
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | awk 'BEGIN{i=0} {printf "%s%d",(i?",":""),i; i++}' || echo "0")}"
@@ -212,7 +234,7 @@ NPROC_PER_NODE=$(echo "$CUDA_VISIBLE_DEVICES" | tr ',' '\n' | wc -l)
 # steps = (frames / (batch_per_gpu * n_gpus)) * epochs
 EFFECTIVE_BATCH=$(( TRAIN_BATCH_SIZE * NPROC_PER_NODE ))
 MAX_TRAINING_STEPS=$(python3 -c "
-frames = $TOTAL_FRAMES
+frames = $TRAIN_FRAMES
 epochs = $TARGET_EPOCHS
 batch  = $EFFECTIVE_BATCH
 steps  = max(1000, int(frames / batch * epochs))
@@ -220,7 +242,7 @@ print(steps)
 ")
 
 CHECKPOINTING_STEPS=$(python3 -c "print(max(200, int($MAX_TRAINING_STEPS / 10)))")
-VALIDATION_STEPS=$(python3 -c "print(max(100, int($MAX_TRAINING_STEPS / 20)))")
+VALIDATION_STEPS="${VALIDATION_STEPS:-$(python3 -c "print(max(100, int($MAX_TRAINING_STEPS / 20)))")}"
 
 echo "    GPUs              : $NPROC_PER_NODE (CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES)"
 echo "    Effective batch   : $EFFECTIVE_BATCH ($TRAIN_BATCH_SIZE per GPU × $NPROC_PER_NODE GPU(s))"
@@ -271,6 +293,9 @@ EXTRA_TRAIN_ARGS=()
 if [[ -n "${RESUME_FROM_CHECKPOINT:-}" ]]; then
     EXTRA_TRAIN_ARGS+=(--train.resume-from-checkpoint="$RESUME_FROM_CHECKPOINT")
     echo "    Resuming from: $RESUME_FROM_CHECKPOINT"
+fi
+if [[ -n "$VAL_EPISODE_FRACTION" ]]; then
+    EXTRA_TRAIN_ARGS+=(--data.val_episode_fraction="$VAL_EPISODE_FRACTION")
 fi
 
 "${LAUNCHER[@]}" \
