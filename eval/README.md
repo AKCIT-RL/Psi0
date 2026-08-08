@@ -22,10 +22,10 @@ Example transfer destinations from the training machine:
 
 ```bash
 rsync -a --info=progress2 /path/to/psi0-run/ \
-  <eval-host>:/home/marcos_paulo/Documents/Psi0/eval/weights/psi0/incoming/psi0-run/
+  <eval-host>:/path/to/Psi0/eval/weights/psi0/incoming/psi0-run/
 
 rsync -a --info=progress2 /path/to/dp-run/ \
-  <eval-host>:/home/marcos_paulo/Documents/Psi0/eval/weights/dp/incoming/dp-run/
+  <eval-host>:/path/to/Psi0/eval/weights/dp/incoming/dp-run/
 ```
 
 Weights are ignored by Git. Evaluation artifacts belong under:
@@ -66,11 +66,11 @@ stored in the W&B table and are not duplicated in the telemetry artifact.
 
 ## SIMPLE checkout
 
-Initialize the configured `industrial_env` submodule from the repository root:
+Initialize the pinned WMO-capable SIMPLE submodule from the repository root:
 
 ```bash
 git submodule sync -- third_party/SIMPLE
-git submodule update --init --recursive --remote third_party/SIMPLE
+git submodule update --init --recursive third_party/SIMPLE
 ```
 
 Then read these local sources before running Docker:
@@ -80,8 +80,56 @@ sed -n '1,240p' third_party/SIMPLE/docs/source/tutorials/docker.md
 git -C third_party/SIMPLE log -10 --stat
 ```
 
-The tutorial and Compose files at the checked-out commit are authoritative. Commands in
-older Psi0 READMEs may refer to the pre-`industrial_env` environment.
+The tutorial and Compose files at the checked-out commit are authoritative. The gitlink
+is pinned to the tested `feat/weg_wmo` commit; do not use `--remote` during setup.
+
+## WMO totes evaluation
+
+The unattended runner evaluates
+`simple/G1WholebodyLocomotionPickTotesShelfToTableTeleop-v0` with the Isaac
+`Simple_Warehouse` backdrop. It performs one smoke episode before the requested main
+episodes and stores all generated artifacts under `eval/results`.
+
+Prepare the policy bundle with this local structure (the directory is ignored by Git):
+
+```text
+eval/bundles/simple-eval-wmo-totes-20260807/
+├── psi0/run/
+│   ├── run_config.json
+│   └── checkpoints/ckpt_220801/model.safetensors
+└── hf_cache/
+```
+
+Place the LeRobot dataset under the SIMPLE data mount:
+
+```text
+third_party/SIMPLE/data/evals/wmo-totes-source/raw/level-0/
+```
+
+Create `third_party/SIMPLE/.env` from `.env.sample`, set `DATA_DIR` to the absolute
+`third_party/SIMPLE/data` path, then build the tested base and small eval image:
+
+```bash
+cd third_party/SIMPLE
+mkdir -p .uv-cache
+cp -n .env.sample .env
+docker buildx bake --allow=network.host isaac-sim
+cd ../..
+docker build -f eval/docker/Dockerfile.simple-wmo-eval \
+  -t simple-teleoperation:251025-wmo-eval .
+```
+
+Run from the repository root. Paths can be overridden with `SIMPLE_DIR`, `BUNDLE_DIR`,
+`PSI0_RUN_DIR`, `HF_CACHE_DIR`, and `DATASET_RELATIVE_PATH`:
+
+```bash
+EPISODES=10 MAX_EPISODE_STEPS=2400 \
+  bash eval/run_wmo_totes_20260807.sh
+```
+
+The runner uses host networking, verifies the policy health endpoint, enables the
+Warehouse USD, records both stereo cameras, writes reproducibility metadata, and cleans
+up only its own server and Compose project.
 
 ## Verified industrial environment
 

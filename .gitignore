@@ -62,6 +62,13 @@ textures/
 test.py
 *.npy
 
+# Local policy evaluation inputs and artifacts
+/eval/bundles/
+/eval/weights/*/incoming/*
+!/eval/weights/*/incoming/.gitkeep
+/eval/results/*
+!/eval/results/.gitkeep
+
 unitree_sdk2_python
 
 src/h_rdt/datasets/pretrain/egodex_large_values.txt

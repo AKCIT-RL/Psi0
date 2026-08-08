@@ -1,0 +1,3 @@
+FROM simple-teleoperation:251025
+
+RUN uv pip install --python /workspace/SIMPLE/.venv/bin/python pyzmq==27.1.0
