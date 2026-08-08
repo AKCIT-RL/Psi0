@@ -154,6 +154,10 @@ Defaults do script (todos sobrescritíveis por variável de ambiente):
 - `TARGET_EPOCHS=50`, `TRAIN_BATCH_SIZE=8`: `MAX_TRAINING_STEPS` é calculado a
   partir dos frames de TREINO (pós-split), preservando 50 épocas reais.
   Ex.: 44.760 frames de treino → 279.750 steps, checkpoint a cada 1/10.
+- `STATE_NOISE_STD` / `STATE_NOISE_STD_WAIST` (opcionais): ruído gaussiano nos
+  states de treino — juntas `[:28]` e cintura rpy `[28:31]` (commit `5e3458d`).
+  A validação fica sempre sem ruído. Ex.: `STATE_NOISE_STD=0.01
+  STATE_NOISE_STD_WAIST=0.01 EXP_NAME=psi0-wmo-totes-noise-ovx sbatch ...`.
 - Para reproduzir o run original SEM split: `VAL_EPISODE_FRACTION=0 sbatch ...`.
 
 O job usa 1 GPU para preservar batch efetivo 8. Em uma L40S: ~4.3 it/s,
@@ -171,6 +175,9 @@ sbatch scripts/train/dp/submit_ovx_dp.sh
 ```
 
 Eval a cada 500 steps (`val_num_batches=20`), checkpoint a cada 5.000.
+O DP também aceita `STATE_NOISE_STD`/`STATE_NOISE_STD_WAIST` (default 0).
+As métricas de eval do DP usam os MESMOS nomes do Psi0 (`eval/loss`,
+`eval/err_l1_*`), então os gráficos dos dois modelos sobrepõem no W&B.
 
 ## 8. Monitorar
 

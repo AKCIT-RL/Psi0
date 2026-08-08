@@ -21,6 +21,8 @@ ENV_FILE="${ENV_FILE:-${RAID_ROOT}/secrets/psi0.env}"
 DATASET_NAME="${DATASET_NAME:-G1WholebodyLocomotionPickTotesShelfToTableTeleop-psi0}"
 EXP_NAME="${EXP_NAME:-dp-wmo-totes-ovx}"
 VAL_EPISODE_FRACTION="${VAL_EPISODE_FRACTION:-0.1}"
+STATE_NOISE_STD="${STATE_NOISE_STD:-0.0}"
+STATE_NOISE_STD_WAIST="${STATE_NOISE_STD_WAIST:-0.0}"
 
 DATA_ROOT="${RAID_ROOT}/data"
 RUNS_ROOT="${RAID_ROOT}/runs"
@@ -58,6 +60,8 @@ apptainer exec --nv --cleanenv \
     --env DATASET_NAME="$DATASET_NAME" \
     --env EXP_NAME="$EXP_NAME" \
     --env VAL_EPISODE_FRACTION="$VAL_EPISODE_FRACTION" \
+    --env STATE_NOISE_STD="$STATE_NOISE_STD" \
+    --env STATE_NOISE_STD_WAIST="$STATE_NOISE_STD_WAIST" \
     "$SIF_PATH" \
     bash -lc '
         set -euo pipefail
@@ -99,6 +103,8 @@ apptainer exec --nv --cleanenv \
             --data.root_dir=/workspace/data \
             --data.train-repo-ids="$DATASET_NAME" \
             --data.val_episode_fraction="$VAL_EPISODE_FRACTION" \
+            --data.transform.field.state-noise-std="$STATE_NOISE_STD" \
+            --data.transform.field.state-noise-std-waist="$STATE_NOISE_STD_WAIST" \
             --data.transform.repack.action-chunk-size=16 \
             --data.transform.repack.pad-action-dim=36 \
             --data.transform.repack.pad-state-dim=32 \

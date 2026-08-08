@@ -31,7 +31,7 @@ from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 class DiffusionPolicyG1Trainer(Trainer):
     @property
     def default_early_stopping_metric(self) -> str:
-        return "val/denorm_err_l1_hand_joints"
+        return "err_l1_hand_joints"
 
     epoch_loss: list[float]
     _loss_cpu: float
@@ -166,9 +166,6 @@ class DiffusionPolicyG1Trainer(Trainer):
 
     def log(self, metrics: dict[str, float], start_time: Optional[float] = None) -> None:
         super().log(metrics, start_time)
-
-    def log_validation(self, metrics: dict[str, float]) -> None:
-        pass
 
     def _save_checkpoint_extras(self, checkpoint_dir: str) -> None:
         if overwatch.is_rank_zero():
@@ -306,35 +303,31 @@ class DiffusionPolicyG1Trainer(Trainer):
         torso_vyaw_start, torso_vyaw_end = 34, 35
         torso_dyaw_start, torso_dyaw_end = 35, 36
     
+        # same metric names as FinetuneTrainer (Psi0) so W&B charts overlay
         labels_denormed = [
-            "val/denorm_err_l1_hand_joints",
-            "val/denorm_err_l1_arm_joints",
-            "val/denorm_err_l1_rpy",
-            "val/denorm_err_l1_height",
-            "val/denorm_err_l1_torso_vx",
-            "val/denorm_err_l1_torso_vy",
-            "val/denorm_err_l1_torso_vyaw",
-            "val/denorm_err_l1_torso_target_yaw",
+            "err_l1_hand_joints",
+            "err_l1_arm_joints",
+            "err_l1_torso_rpy",
+            "err_l1_height",
+            "err_l1_vx",
+            "err_l1_vy",
+            "err_l1_vyaw",
+            "err_l1_target_yaw",
         ]
-        
+
         avg_lr_action_err_denormed = np.split(
-            avg_action_errors_denormed, [hand_joints_end, arm_joints_end, rpy_end, height_end, torso_vx_end, torso_vy_end, torso_vyaw_end, torso_dyaw_end], axis=-1
+            avg_action_errors_denormed, [hand_joints_end, arm_joints_end, rpy_end, height_end, torso_vx_end, torso_vy_end, torso_vyaw_end], axis=-1
         )
 
-        # log metrics
-        metrics = {
-            "val/bc_loss": avg_val_loss,
+        # logged by the training loop via log_validation under the eval/ prefix
+        return {
+            "loss": avg_val_loss,
             **dict(
                 zip(
                     labels_denormed, map(np.linalg.norm, avg_lr_action_err_denormed)
                 )
             ),
         }
-        accelerator.log(
-            metrics,
-            step=global_step + 1,
-        )
-        return metrics
 
     def resume_from_checkpoint(self):
         initial_global_step, load_path = super().resume_from_checkpoint()

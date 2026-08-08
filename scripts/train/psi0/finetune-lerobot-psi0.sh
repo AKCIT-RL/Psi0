@@ -297,6 +297,15 @@ fi
 if [[ -n "$VAL_EPISODE_FRACTION" ]]; then
     EXTRA_TRAIN_ARGS+=(--data.val_episode_fraction="$VAL_EPISODE_FRACTION")
 fi
+# gaussian state-noise augmentation (train only; val stays clean)
+if [[ -n "${STATE_NOISE_STD:-}" ]]; then
+    EXTRA_TRAIN_ARGS+=(--data.transform.field.state-noise-std="$STATE_NOISE_STD")
+    echo "    State noise std   : $STATE_NOISE_STD (joints)"
+fi
+if [[ -n "${STATE_NOISE_STD_WAIST:-}" ]]; then
+    EXTRA_TRAIN_ARGS+=(--data.transform.field.state-noise-std-waist="$STATE_NOISE_STD_WAIST")
+    echo "    State noise waist : $STATE_NOISE_STD_WAIST (rpy)"
+fi
 
 "${LAUNCHER[@]}" \
     finetune_real_psi0_config \
