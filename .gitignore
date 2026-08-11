@@ -16,6 +16,10 @@ ml-egodex_dataset/ # soft link to the egodex dataset
 wandb/
 runs/
 checkpoints/
+/containers/
+/psi_home/
+/secrets/
+/memory/
 log/
 playgrounds/
 TODO.md

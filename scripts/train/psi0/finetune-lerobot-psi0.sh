@@ -155,7 +155,7 @@ _check_or_download() {
     local hf_local_dir
     hf_local_dir="$(dirname "$PSI_CKPT_DIR")"
 
-    if [[ -d "$path" ]] || [[ -f "$path" ]]; then
+    if _checkpoint_complete "$path" "$label"; then
         echo "    $label: $path ✓"
         return 0
     fi
@@ -188,12 +188,23 @@ _check_or_download() {
         exit 1
     fi
 
-    if [[ ! -d "$path" ]] && [[ ! -f "$path" ]]; then
+    if ! _checkpoint_complete "$path" "$label"; then
         echo "[ERROR] Download appeared to succeed but $path still not found."
         echo "        Expected the model at: $path"
         exit 1
     fi
     echo "    $label: downloaded ✓"
+}
+
+_checkpoint_complete() {
+    local path="$1"
+    local label="$2"
+    if [[ "$label" == "VLM backbone" ]]; then
+        compgen -G "$path/model*.safetensors" >/dev/null \
+            || compgen -G "$path/pytorch_model*.bin" >/dev/null
+    else
+        [[ -s "$path/action_header.safetensors" ]]
+    fi
 }
 
 _check_or_download "$VLM_CKPT"    "$VLM_REMOTE"    "VLM backbone"
@@ -233,7 +244,7 @@ NPROC_PER_NODE=$(echo "$CUDA_VISIBLE_DEVICES" | tr ',' '\n' | wc -l)
 
 # steps = (frames / (batch_per_gpu * n_gpus)) * epochs
 EFFECTIVE_BATCH=$(( TRAIN_BATCH_SIZE * NPROC_PER_NODE ))
-MAX_TRAINING_STEPS=$(python3 -c "
+COMPUTED_MAX_TRAINING_STEPS=$(python3 -c "
 frames = $TRAIN_FRAMES
 epochs = $TARGET_EPOCHS
 batch  = $EFFECTIVE_BATCH
@@ -241,8 +252,11 @@ steps  = max(1000, int(frames / batch * epochs))
 print(steps)
 ")
 
-CHECKPOINTING_STEPS=$(python3 -c "print(max(200, int($MAX_TRAINING_STEPS / 10)))")
+MAX_TRAINING_STEPS="${MAX_TRAINING_STEPS:-$COMPUTED_MAX_TRAINING_STEPS}"
+CHECKPOINTING_STEPS="${CHECKPOINTING_STEPS:-$(python3 -c "print(max(200, int($MAX_TRAINING_STEPS / 10)))")}"
 VALIDATION_STEPS="${VALIDATION_STEPS:-$(python3 -c "print(max(100, int($MAX_TRAINING_STEPS / 20)))")}"
+VAL_NUM_BATCHES="${VAL_NUM_BATCHES:-20}"
+WARMUP_STEPS="${WARMUP_STEPS:-500}"
 
 echo "    GPUs              : $NPROC_PER_NODE (CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES)"
 echo "    Effective batch   : $EFFECTIVE_BATCH ($TRAIN_BATCH_SIZE per GPU × $NPROC_PER_NODE GPU(s))"
@@ -250,6 +264,7 @@ echo "    Target epochs     : $TARGET_EPOCHS"
 echo "    Max training steps: $MAX_TRAINING_STEPS"
 echo "    Checkpointing     : every $CHECKPOINTING_STEPS steps"
 echo "    Validation        : every $VALIDATION_STEPS steps"
+echo "    Validation batches: $VAL_NUM_BATCHES"
 
 # WandB / logging
 LOG_BACKEND="wandb"
@@ -257,7 +272,7 @@ if [[ "${WANDB_DISABLED:-0}" == "1" ]] || [[ -z "${WANDB_API_KEY:-}" ]]; then
     LOG_BACKEND="tensorboard"
     echo "    Logging           : tensorboard (wandb disabled or no API key)"
 else
-    echo "    Logging           : wandb (project=psi, entity=${WANDB_ENTITY:-})"
+    echo "    Logging           : wandb (project=${WANDB_PROJECT:-psi}, entity=${WANDB_ENTITY:-})"
 fi
 
 # ── 6. Launch training ────────────────────────────────────────────────────────
@@ -320,15 +335,16 @@ fi
     --train.learning_rate=1e-4 \
     --train.max_training_steps="$MAX_TRAINING_STEPS" \
     --train.warmup_ratio=None \
-    --train.warmup_steps=500 \
+    --train.warmup_steps="$WARMUP_STEPS" \
     --train.checkpointing_steps="$CHECKPOINTING_STEPS" \
     --train.validation_steps="$VALIDATION_STEPS" \
-    --train.val_num_batches=20 \
+    --train.val_num_batches="$VAL_NUM_BATCHES" \
     --train.max_grad_norm=1.0 \
     --train.lr_scheduler_type=cosine \
     --train.lr_scheduler_kwargs.weight_decay=1e-6 \
     --train.lr_scheduler_kwargs.betas 0.95 0.999 \
     --log.report_to="$LOG_BACKEND" \
+    --wandb.project="${WANDB_PROJECT:-psi}" \
     --data.root_dir="$DATA_ROOT" \
     --data.train_repo_ids="$DATASET_NAME" \
     --data.transform.repack.pad-action-dim=36 \

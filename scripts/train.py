@@ -13,6 +13,7 @@ import datetime
 import sys
 import tyro
 import importlib
+from pathlib import Path
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from psi.config.config import LaunchConfig
@@ -104,10 +105,18 @@ def _initialize_accelerator(trainer: Trainer) -> Accelerator:
             # wandb resume with old hisotry
             if trainer.cfg.train.resume_from_checkpoint is not None and trainer.cfg.wandb.resume != "never":
                 run_id = wandb_config.get("id") or getattr(trainer.cfg.wandb, "id", None)
-                if not run_id :
-                    run_dir = os.path.join(*trainer.cfg.train.resume_from_checkpoint.split("/")[:3])
-                    if os.path.exists(os.path.join(run_dir, "run_config.json")):
-                        with open(os.path.join(run_dir, "run_config.json")) as f:
+                if not run_id:
+                    checkpoint_path = Path(trainer.cfg.train.resume_from_checkpoint).expanduser()
+                    run_config_path = next(
+                        (
+                            candidate / "run_config.json"
+                            for candidate in (checkpoint_path, *checkpoint_path.parents)
+                            if (candidate / "run_config.json").is_file()
+                        ),
+                        None,
+                    )
+                    if run_config_path is not None:
+                        with run_config_path.open() as f:
                             run_id = (json.load(f).get("wandb") or {}).get("id")
                             overwatch.info(f"resume wandb with run id: {run_id}")
                         wandb_config["id"] = run_id
@@ -338,7 +347,9 @@ if __name__ == "__main__":
         "OMP_NUM_THREADS", "HF_HOME", "TORCH_HOME", "HF_TOKEN", "HF_LEROBOT_HOME",
         "DATA_HOME", "UV_CACHE_DIR", "WANDB_API_KEY",
         "PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "CUDA_VISIBLE_DEVICES",
-        "WORLD_SIZE", "LOCAL_WORLD_SIZE", "RANK", "LOCAL_RANK", "MASTER_ADDR", "MASTER_PORT"
+        "WORLD_SIZE", "LOCAL_WORLD_SIZE", "RANK", "LOCAL_RANK", "MASTER_ADDR", "MASTER_PORT",
+        "GIT_COMMIT", "DATASET_REPO_ID", "DATASET_REVISION", "MODEL_REPO_ID",
+        "MODEL_REVISION", "CONTAINER_SHA256", "SOURCE_SLURM_JOB_ID"
     ]
 
     env_info = {}
@@ -347,7 +358,7 @@ if __name__ == "__main__":
         value = os.environ.get(var, "Not Set")
         # Mask sensitive tokens for logging
         if "TOKEN" in var or "KEY" in var:
-            display_value = f"{value[:3]}...{value[-4:]}" if value != "Not Set" and len(value) > 7 else value
+            display_value = "Set" if value != "Not Set" else value
         else:
             display_value = value
         

@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
 
-set -u
+set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ROOT=${ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}
 SIMPLE=${SIMPLE_DIR:-$ROOT/third_party/SIMPLE}
 BUNDLE_DIR=${BUNDLE_DIR:-$ROOT/eval/bundles/simple-eval-wmo-totes-20260807}
 PSI0_RUN_DIR=${PSI0_RUN_DIR:-$BUNDLE_DIR/psi0/run}
-HF_CACHE_DIR=${HF_CACHE_DIR:-$BUNDLE_DIR/hf_cache}
-DATASET_RELATIVE_PATH=${DATASET_RELATIVE_PATH:-evals/wmo-totes-source/raw/level-0}
-DATASET=$SIMPLE/data/$DATASET_RELATIVE_PATH
+HF_CACHE_DIR=${HF_CACHE_DIR:-$ROOT/cache/huggingface}
+PSI_HOME_DIR=${PSI_HOME_DIR:-$ROOT/psi_home}
+SIF_PATH=${SIF_PATH:-$ROOT/containers/industrial_humanoids_psi0-train.gr00t_devel.sif}
+ENV_FILE=${ENV_FILE:-$ROOT/secrets/psi0.env}
+DATA_ROOT=${DATA_ROOT:-$ROOT/data}
+DATASET_RELATIVE_PATH=${DATASET_RELATIVE_PATH:-G1WholebodyLocomotionPickTotesShelfToTableTeleop-psi0}
+DATASET=$DATA_ROOT/$DATASET_RELATIVE_PATH
 CONTAINER_DATASET=/workspace/SIMPLE/data/$DATASET_RELATIVE_PATH
 RESULT_BASE=$ROOT/eval/results/wmo-totes-20260807
 RUN_ID=${RUN_ID:-$(date -u '+%Y%m%dT%H%M%SZ')}
@@ -17,14 +21,16 @@ RESULT_DIR=$RESULT_BASE/$RUN_ID
 LOGS=$RESULT_DIR/logs
 TASK=simple/G1WholebodyLocomotionPickTotesShelfToTableTeleop-v0
 POLICY=psi0_decoupled_wbc
-SIMPLE_COMMIT=4502e56fbd13501af48ec528dd79957054325472
-DATASET_COMMIT=d51d88f6af25f93734502d69fdce90d3bc903af3
-CHECKPOINT=${CHECKPOINT:-220801}
+SIMPLE_COMMIT=${SIMPLE_COMMIT:-599d6c0e3364b31095f1a59fdbfa4ea507ae90c9}
+DATASET_COMMIT=${DATASET_COMMIT:-219d98f9228f9d2db41d723a56744f3b9093353a}
+CHECKPOINT=${CHECKPOINT:-2}
 PORT=${PORT:-22085}
 EPISODES=${EPISODES:-10}
 MAX_EPISODE_STEPS=${MAX_EPISODE_STEPS:-2400}
 SMOKE_ONLY=${SMOKE_ONLY:-0}
 IMAGE=${IMAGE:-simple-teleoperation:251025-wmo-eval}
+GPU_DEVICE=${SLURM_JOB_GPUS:-${CUDA_VISIBLE_DEVICES:-0}}
+GPU_DEVICE=${GPU_DEVICE%%,*}
 LDP=/isaac-sim/extscache/omni.sensors.nv.camera-0.20.1-coreapi+lx64.r/bin
 ISAAC_BACKGROUND_USD=https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/4.5/Isaac/Environments/Simple_Warehouse/warehouse.usd
 
@@ -74,13 +80,28 @@ count_episodes() {
 start_server() {
     (
         cd "$ROOT" || exit 1
-        export HF_HOME=$HF_CACHE_DIR
-        export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 CUDA_VISIBLE_DEVICES=0
-        source .venv-psi/bin/activate
-        exec uv run --active --group psi --group serve serve_psi0 \
-            --host=0.0.0.0 --port="$PORT" --policy=psi0 \
-            --run-dir="$PSI0_RUN_DIR" --ckpt-step="$CHECKPOINT" \
-            --action-exec-horizon=24 --rtc
+        exec apptainer exec --nv --cleanenv \
+            --bind "$ROOT/src:/workspace/src:ro" \
+            --bind "$ROOT/scripts:/workspace/scripts:ro" \
+            --bind "$ROOT/pyproject.toml:/workspace/pyproject.toml:ro" \
+            --bind "$ENV_FILE:/workspace/.env:ro" \
+            --bind "$PSI0_RUN_DIR:/workspace/run:ro" \
+            --bind "$PSI_HOME_DIR:/workspace/psi_home:ro" \
+            --bind "$HF_CACHE_DIR:/workspace/hf_cache" \
+            --env PYTHONPATH=/workspace/src \
+            --env HF_HOME=/workspace/hf_cache \
+            --env HF_HUB_OFFLINE=1 \
+            --env TRANSFORMERS_OFFLINE=1 \
+            --env CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE_DEVICES" \
+            "$SIF_PATH" bash -lc '
+                set -euo pipefail
+                source /workspace/.env
+                source /workspace/.venv/bin/activate
+                exec serve_psi0 \
+                    --host=0.0.0.0 --port='"$PORT"' --policy=psi0 \
+                    --run-dir=/workspace/run --ckpt-step='"$CHECKPOINT"' \
+                    --action-exec-horizon=24 --rtc
+            '
     ) >> "$LOGS/policy-server.log" 2>&1 &
     SERVER_PID=$!
 }
@@ -92,11 +113,10 @@ run_eval() {
     ACTIVE_PROJECT=$project
     (
         cd "$SIMPLE" || exit 1
-        GPUs=0 docker compose \
+        DATA_DIR="$DATA_ROOT" GPUs="$GPU_DEVICE" docker compose \
             -f docker-compose.yml -f "$ROOT/eval/docker-compose.wmo.yml" \
             -p "$project" run --rm --no-deps -T \
             -v "$ROOT/eval:/workspace/eval" \
-            -v "$ROOT/eval/overlays/wmo_totes/lerobot.py:/workspace/SIMPLE/src/simple/datasets/lerobot.py:ro" \
             -e LD_LIBRARY_PATH="/usr/local/cuda-12.8/targets/x86_64-linux/lib:/isaac-sim/extscache/omni.kit.streamsdk.plugins-6.1.7+106.2.0.lx64.r/bin:$LDP" \
             -e SIMPLE_ISAAC_BACKGROUND_USD="$ISAAC_BACKGROUND_USD" \
             --entrypoint "uv run --no-sync eval-decoupled-wbc" eval \
@@ -128,7 +148,7 @@ write_metadata() {
   "rtc": true,
   "episodes": $EPISODES,
     "max_episode_steps": $MAX_EPISODE_STEPS,
-  "dataset": "lGabrielJJ/G1WholebodyLocomotionPickTotesShelfToTableTeleop/raw/level-0",
+    "dataset": "lGabrielJJ/G1WholebodyLocomotionPickTotesShelfToTableTeleop/G1WholebodyLocomotionPickTotesShelfToTableTeleopPsi0",
   "dataset_commit": "$DATASET_COMMIT",
   "main_repository_commit": "$main_commit",
   "simple_commit": "$SIMPLE_COMMIT",
@@ -136,6 +156,7 @@ write_metadata() {
   "docker_image_id": "$image_id",
     "isaac_background_usd": "$ISAAC_BACKGROUND_USD",
   "policy_port": $PORT,
+    "slurm_job_id": "${SLURM_JOB_ID:-unknown}",
   "result_directory": "$RESULT_DIR"
 }
 EOF
@@ -170,6 +191,8 @@ log "Iniciando WMO totes run_id=$RUN_ID"
 [[ -s $PSI0_RUN_DIR/checkpoints/ckpt_$CHECKPOINT/model.safetensors ]] \
     || fail "checkpoint ausente"
 [[ -d $HF_CACHE_DIR ]] || fail "cache Hugging Face ausente: $HF_CACHE_DIR"
+[[ -s $SIF_PATH ]] || fail "SIF Psi0 ausente: $SIF_PATH"
+[[ -s $ENV_FILE ]] || fail "arquivo de ambiente ausente: $ENV_FILE"
 [[ $(find "$DATASET/data" -name 'episode_*.parquet' | wc -l) -eq 50 ]] \
     || fail "dataset sem 50 parquets"
 [[ $(find "$DATASET/videos" -name 'episode_*.mp4' | wc -l) -eq 50 ]] \
@@ -177,7 +200,7 @@ log "Iniciando WMO totes run_id=$RUN_ID"
 docker image inspect "$IMAGE" >/dev/null 2>&1 \
     || fail "imagem $IMAGE ausente"
 docker info >/dev/null 2>&1 || fail "Docker indisponivel"
-nvidia-smi -L | grep -q 'GPU 0' || fail "GPU 0 indisponivel"
+nvidia-smi -L | grep -q 'GPU' || fail "GPU Slurm indisponivel"
 port_up && fail "porta $PORT ja esta em uso"
 write_metadata
 
