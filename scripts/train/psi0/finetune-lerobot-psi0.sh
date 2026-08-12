@@ -16,6 +16,10 @@
 #   ACTION_CKPT_PATH       Override action header checkpoint path
 #   WANDB_DISABLED         Set to 1 to disable wandb logging
 #   RESUME_FROM_CHECKPOINT Resume from an existing checkpoint path
+#   EARLY_STOPPING         Set to 1 to enable early stopping on validation metric
+#   EARLY_STOPPING_PATIENCE   Validation rounds without improvement (default: 15)
+#   EARLY_STOPPING_MIN_STEPS  Do not stop before this global step (default: 0)
+#   EARLY_STOPPING_METRIC     Metric name (default: auto -> err_l1_hand_joints)
 
 set -euo pipefail
 
@@ -320,6 +324,20 @@ fi
 if [[ -n "${STATE_NOISE_STD_WAIST:-}" ]]; then
     EXTRA_TRAIN_ARGS+=(--data.transform.field.state-noise-std-waist="$STATE_NOISE_STD_WAIST")
     echo "    State noise waist : $STATE_NOISE_STD_WAIST (rpy)"
+fi
+# early stopping (tyro bool: bare flag sets true, --train.no-early-stopping sets false)
+if [[ "${EARLY_STOPPING:-0}" == "1" ]]; then
+    EXTRA_TRAIN_ARGS+=(--train.early-stopping)
+    if [[ -n "${EARLY_STOPPING_PATIENCE:-}" ]]; then
+        EXTRA_TRAIN_ARGS+=(--train.early-stopping-patience="$EARLY_STOPPING_PATIENCE")
+    fi
+    if [[ -n "${EARLY_STOPPING_MIN_STEPS:-}" ]]; then
+        EXTRA_TRAIN_ARGS+=(--train.early-stopping-min-steps="$EARLY_STOPPING_MIN_STEPS")
+    fi
+    if [[ -n "${EARLY_STOPPING_METRIC:-}" ]]; then
+        EXTRA_TRAIN_ARGS+=(--train.early-stopping-metric="$EARLY_STOPPING_METRIC")
+    fi
+    echo "    Early stopping    : enabled (patience=${EARLY_STOPPING_PATIENCE:-15}, min_steps=${EARLY_STOPPING_MIN_STEPS:-0}, metric=${EARLY_STOPPING_METRIC:-auto})"
 fi
 
 "${LAUNCHER[@]}" \

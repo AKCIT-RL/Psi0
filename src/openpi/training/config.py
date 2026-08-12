@@ -558,6 +558,19 @@ class TrainConfig:
     # If true, will resume training from the last checkpoint.
     resume: bool = False
 
+    # Fraction of episodes held out for validation (0 disables validation).
+    val_episode_fraction: float = 0.0
+    # How often (in steps) to run validation.
+    val_interval: int = 2500
+    # Max number of validation batches per evaluation.
+    val_num_batches: int = 20
+    # Early stopping on the validation metric (requires val_episode_fraction > 0).
+    early_stopping: bool = False
+    early_stopping_metric: str = "auto"
+    early_stopping_patience: int = 15
+    early_stopping_smooth_window: int = 5
+    early_stopping_min_steps: int = 0
+
     # If true, will enable wandb logging.
     wandb_enabled: bool = True
 
@@ -1200,6 +1213,42 @@ _CONFIGS = [
         ),
         pytorch_weight_path=f"{os.environ['PSI_HOME']}/cache/checkpoints/openpi/pi05_droid",
         policy_metadata={"dataset": "Spray_the_bowl_and_wipe_it_and_stack_it_up"},
+    ),
+    TrainConfig(
+        name="g1totemix_pi05",
+        project_name="psi-h100",
+        num_workers=8,
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_dim=36,
+            action_horizon=30,
+            max_token_len=250,
+        ),
+        data=LeRobotHFMDataConfig(
+            repo_id=f"{os.environ['PSI_HOME']}/data/G1ToteMix-psi0",
+            base_config=DataConfig(prompt_from_task=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_droid/params"),
+        num_train_steps=160_000,
+        batch_size=32,
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=1_000,
+            peak_lr=1e-4,
+            decay_steps=160_000,
+            decay_lr=1e-8,
+        ),
+        pytorch_weight_path=f"{os.environ['PSI_HOME']}/cache/checkpoints/openpi/pi05_droid",
+        policy_metadata={"dataset": "G1ToteMix-psi0"},
+        checkpoint_base_dir=".runs/openpi-05",
+        # standardized with psi0-g1totemix: episode val split + early stopping
+        val_episode_fraction=0.05,
+        val_interval=2500,
+        val_num_batches=20,
+        early_stopping=True,
+        early_stopping_metric="auto",
+        early_stopping_patience=15,
+        early_stopping_smooth_window=5,
+        early_stopping_min_steps=0,
     ),
     ### experiments on SIMPLE tasks ####
     TrainConfig(

@@ -128,7 +128,10 @@ class FakeDataset(Dataset):
 
 
 def create_torch_dataset(
-    data_config: _config.DataConfig, action_horizon: int, model_config: _model.BaseModelConfig
+    data_config: _config.DataConfig,
+    action_horizon: int,
+    model_config: _model.BaseModelConfig,
+    episodes: list[int] | None = None,
 ) -> Dataset:
     """Create a dataset for training."""
     repo_id = data_config.repo_id
@@ -137,15 +140,23 @@ def create_torch_dataset(
     if repo_id == "fake":
         return FakeDataset(model_config, num_samples=1024)
 
-    print('TESTING: repo_id: ', repo_id)
     dataset_meta = LeRobotDatasetMetadata(repo_id)
     dataset = LeRobotDataset(
         repo_id,
         delta_timestamps={
             key: [t / dataset_meta.fps for t in range(action_horizon)] for key in data_config.action_sequence_keys
         },
-        # video_backend="pyav",
+        # host has no system FFmpeg; pyav ships its own
+        video_backend="pyav",
     )
+
+    if episodes is not None:
+        # lerobot's `episodes` kwarg breaks delta_timestamps indexing (episode_data_index
+        # is compacted while items keep original episode ids), so subset by frame instead
+        ep_from = dataset.episode_data_index["from"]
+        ep_to = dataset.episode_data_index["to"]
+        indices = [i for ep in episodes for i in range(int(ep_from[ep]), int(ep_to[ep]))]
+        dataset = torch.utils.data.Subset(dataset, indices)
 
     if data_config.prompt_from_task:
         dataset = TransformedDataset(dataset, [_transforms.PromptFromLeRobotTask(dataset_meta.tasks)])
@@ -230,6 +241,7 @@ def create_data_loader(
     num_batches: int | None = None,
     skip_norm_stats: bool = False,
     framework: Literal["jax", "pytorch"] = "jax",
+    episodes: list[int] | None = None,
 ) -> DataLoader[tuple[_model.Observation, _model.Actions]]:
     """Create a data loader for training.
 
@@ -240,6 +252,7 @@ def create_data_loader(
         num_batches: Determines the number of batches to return.
         skip_norm_stats: Whether to skip data normalization.
         framework: The framework to use ("jax" or "pytorch").
+        episodes: Optional episode subset (e.g. train/val split).
     """
     data_config = config.data.create(config.assets_dirs, config.model)
     # logging.info(f"data_config: {data_config}")
@@ -267,6 +280,7 @@ def create_data_loader(
         seed=config.seed,
         skip_norm_stats=skip_norm_stats,
         framework=framework,
+        episodes=episodes,
     )
 
 
@@ -283,6 +297,7 @@ def create_torch_data_loader(
     num_workers: int = 0,
     seed: int = 0,
     framework: str = "jax",
+    episodes: list[int] | None = None,
 ) -> DataLoader[tuple[_model.Observation, _model.Actions]]:
     """Create a data loader for training.
 
@@ -301,7 +316,7 @@ def create_torch_data_loader(
             execute in the main process.
         seed: The seed to use for shuffling the data.
     """
-    dataset = create_torch_dataset(data_config, action_horizon, model_config)
+    dataset = create_torch_dataset(data_config, action_horizon, model_config, episodes=episodes)
     dataset = transform_dataset(dataset, data_config, skip_norm_stats=skip_norm_stats)
 
     # Use TorchDataLoader for both frameworks

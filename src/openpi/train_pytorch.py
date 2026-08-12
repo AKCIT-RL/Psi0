@@ -29,10 +29,12 @@ assert load_dotenv(), "Failed to load .env file. Make sure it exists and contain
 
 import dataclasses
 import gc
+import json
 import logging
 import os
 import platform
 import shutil
+import statistics
 import time
 
 import jax
@@ -136,10 +138,152 @@ def set_seed(seed: int, local_rank: int):
         torch.cuda.manual_seed_all(seed + local_rank)
 
 
-def build_datasets(config: _config.TrainConfig):
+def build_datasets(config: _config.TrainConfig, episodes: list[int] | None = None):
     # Use the unified data loader with PyTorch framework
-    data_loader = _data.create_data_loader(config, framework="pytorch", shuffle=True)
+    data_loader = _data.create_data_loader(config, framework="pytorch", shuffle=True, episodes=episodes)
     return data_loader, data_loader.data_config()
+
+
+# mirrors src/psi/trainers/trainer.py semantics (moving-median smoothing + patience)
+class EarlyStoppingState:
+    def __init__(self, patience: int, smooth_window: int, min_steps: int):
+        if patience < 0:
+            raise ValueError("early_stopping_patience must be non-negative")
+        if smooth_window < 1:
+            raise ValueError("early_stopping_smooth_window must be at least 1")
+        self.patience = patience
+        self.smooth_window = smooth_window
+        self.min_steps = min_steps
+        self.best_value = float("inf")
+        self.counter = 0
+        self.history = []
+
+    def update(self, value: float, global_step: int):
+        self.history.append(float(value))
+        self.history = self.history[-self.smooth_window:]
+        smoothed_value = statistics.median(self.history)
+        improved = smoothed_value < self.best_value
+        if improved:
+            self.best_value = smoothed_value
+            self.counter = 0
+        else:
+            self.counter += 1
+        should_stop = self.counter > self.patience and global_step >= self.min_steps
+        return improved, should_stop, smoothed_value
+
+    def state_dict(self):
+        return {
+            "best_value": self.best_value,
+            "counter": self.counter,
+            "history": self.history,
+        }
+
+    def load_state_dict(self, state):
+        self.best_value = float(state["best_value"])
+        self.counter = int(state["counter"])
+        self.history = [float(value) for value in state["history"]][-self.smooth_window:]
+
+
+def split_episodes(config: _config.TrainConfig):
+    """Deterministic episode-level train/val split (same convention as psi0 finetune)."""
+    if config.val_episode_fraction <= 0:
+        return None, None
+    repo_id = config.data.repo_id
+    total = _data.LeRobotDatasetMetadata(repo_id).total_episodes
+    n_val = max(1, round(total * config.val_episode_fraction))
+    perm = np.random.default_rng(config.seed).permutation(total)
+    val_eps = sorted(int(e) for e in perm[:n_val])
+    train_eps = sorted(int(e) for e in perm[n_val:])
+    logging.info(f"Episode split: {len(train_eps)} train / {len(val_eps)} val (of {total})")
+    return train_eps, val_eps
+
+
+# same dimension splits as src/psi/trainers/finetune.py (G1 36-dim action)
+_VAL_METRIC_SPLITS = [14, 28, 31, 32, 33, 34, 35]
+_VAL_METRIC_LABELS = [
+    "err_l1_hand_joints",
+    "err_l1_arm_joints",
+    "err_l1_torso_rpy",
+    "err_l1_height",
+    "err_l1_vx",
+    "err_l1_vy",
+    "err_l1_vyaw",
+    "err_l1_target_yaw",
+]
+
+
+def run_validation(model, val_loader, device, config, data_config, use_ddp):
+    """Compute val loss and denormalized action L1 error metrics."""
+    eval_model = model.module if isinstance(model, torch.nn.parallel.DistributedDataParallel) else model
+    eval_model.eval()
+
+    norm_stats = data_config.norm_stats["actions"]
+    if data_config.use_quantile_norm:
+        scale = (np.asarray(norm_stats.q99) - np.asarray(norm_stats.q01)) / 2.0
+    else:
+        scale = np.asarray(norm_stats.std)
+    scale = torch.as_tensor(scale, dtype=torch.float32, device=device)
+
+    loss_sum = torch.zeros((), device=device)
+    err_sum = None
+    count = torch.zeros((), device=device)
+
+    with torch.no_grad():
+        for observation, actions in val_loader:
+            observation = jax.tree.map(lambda x: x.to(device), observation)
+            actions = actions.to(torch.float32).to(device)
+
+            losses = eval_model(observation, actions)
+            if isinstance(losses, list | tuple):
+                losses = torch.stack(losses)
+            loss_sum += losses.mean().float()
+
+            pred_actions = eval_model.sample_actions(device, observation)
+            Tp = min(pred_actions.shape[1], actions.shape[1])
+            Da = actions.shape[-1]
+            err = (pred_actions[:, :Tp, :Da].float() - actions[:, :Tp]).abs() * scale
+            err = err.reshape(-1, Da).mean(dim=0)
+            err_sum = err if err_sum is None else err_sum + err
+            count += 1
+
+    if use_ddp:
+        dist.all_reduce(loss_sum)
+        dist.all_reduce(err_sum)
+        dist.all_reduce(count)
+
+    avg_loss = (loss_sum / count).item()
+    avg_err = (err_sum / count).cpu().numpy()  # (Da,) denormalized per-dim L1
+    groups = np.split(avg_err, _VAL_METRIC_SPLITS, axis=-1)
+    metrics = {"loss": avg_loss}
+    metrics.update({label: float(np.linalg.norm(g)) for label, g in zip(_VAL_METRIC_LABELS, groups)})
+
+    eval_model.train()
+    return metrics
+
+
+def save_best_checkpoint(model, global_step, config, data_config, early_stopping, val_metrics):
+    """Save the current model as checkpoints/best (atomic)."""
+    tmp_dir = config.checkpoint_dir / "tmp_best"
+    final_dir = config.checkpoint_dir / "best"
+    if tmp_dir.exists():
+        shutil.rmtree(tmp_dir)
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+
+    model_to_save = model.module if isinstance(model, torch.nn.parallel.DistributedDataParallel) else model
+    safetensors.torch.save_model(model_to_save, tmp_dir / "model.safetensors")
+
+    norm_stats = data_config.norm_stats
+    if norm_stats is not None and data_config.asset_id is not None:
+        _normalize.save(tmp_dir / "assets" / data_config.asset_id, norm_stats)
+
+    (tmp_dir / "early_stopping_state.json").write_text(
+        json.dumps({"global_step": global_step, "val_metrics": val_metrics, **early_stopping.state_dict()}, indent=2)
+    )
+
+    if final_dir.exists():
+        shutil.rmtree(final_dir)
+    tmp_dir.rename(final_dir)
+    logging.info(f"Saved best checkpoint at step {global_step} -> {final_dir}")
 
 
 def get_model_state_dict(model):
@@ -398,7 +542,35 @@ def train_loop(config: _config.TrainConfig):
     )
 
     # Pass the original batch size to data loader - it will handle DDP splitting internally
-    loader, data_config = build_datasets(config)
+    train_episodes, val_episodes = split_episodes(config)
+    loader, data_config = build_datasets(config, episodes=train_episodes)
+
+    val_loader = None
+    if val_episodes is not None:
+        val_loader = _data.create_data_loader(
+            config,
+            framework="pytorch",
+            shuffle=False,
+            episodes=val_episodes,
+            num_batches=config.val_num_batches,
+        )
+
+    early_stopping = None
+    if config.early_stopping:
+        if val_loader is None:
+            raise ValueError("early_stopping requires val_episode_fraction > 0")
+        early_stopping = EarlyStoppingState(
+            patience=config.early_stopping_patience,
+            smooth_window=config.early_stopping_smooth_window,
+            min_steps=config.early_stopping_min_steps,
+        )
+        es_state_path = config.checkpoint_dir / "best" / "early_stopping_state.json"
+        if resuming and es_state_path.exists():
+            early_stopping.load_state_dict(json.loads(es_state_path.read_text()))
+            logging.info(f"Resumed early stopping state: best={early_stopping.best_value:.6f} counter={early_stopping.counter}")
+    es_metric = config.early_stopping_metric
+    if es_metric == "auto":
+        es_metric = "err_l1_hand_joints"
 
     # Log sample images to wandb on first batch
     if is_main and config.wandb_enabled and not resuming:
@@ -615,6 +787,7 @@ def train_loop(config: _config.TrainConfig):
         if use_ddp and hasattr(loader, "set_epoch"):
             loader.set_epoch(global_step // len(loader))
 
+        stop_training = False
         for observation, actions in loader:
             # Check if we've reached the target number of steps
             if global_step >= config.num_train_steps:
@@ -718,12 +891,49 @@ def train_loop(config: _config.TrainConfig):
             # Save checkpoint using the new mechanism
             save_checkpoint(model, optim, global_step, config, is_main, data_config)
 
+            # Validation + early stopping (metrics are all-reduced, so every rank
+            # takes the same decision)
+            if val_loader is not None and global_step % config.val_interval == 0:
+                val_metrics = run_validation(model, val_loader, device, config, data_config, use_ddp)
+                if is_main:
+                    logging.info(
+                        "val step=%d %s" % (global_step, " ".join(f"{k}={v:.5f}" for k, v in val_metrics.items()))
+                    )
+                    if config.wandb_enabled:
+                        wandb.log({f"val/{k}": v for k, v in val_metrics.items()}, step=global_step)
+                if early_stopping is not None:
+                    improved, should_stop, smoothed = early_stopping.update(val_metrics[es_metric], global_step)
+                    if is_main:
+                        if config.wandb_enabled:
+                            wandb.log(
+                                {
+                                    f"val/{es_metric}_smoothed": smoothed,
+                                    "val/early_stopping_counter": early_stopping.counter,
+                                },
+                                step=global_step,
+                            )
+                        if improved:
+                            save_best_checkpoint(model, global_step, config, data_config, early_stopping, val_metrics)
+                    if should_stop:
+                        if is_main:
+                            logging.info(
+                                f"Early stopping at step {global_step}: {es_metric} did not improve for "
+                                f"{early_stopping.counter} validations (best={early_stopping.best_value:.6f})"
+                            )
+                        stop_training = True
+
+            if stop_training:
+                break
+
             # Update progress bar
             if pbar is not None:
                 pbar.update(1)
                 pbar.set_postfix(
                     {"loss": f"{loss.item():.4f}", "lr": f"{optim.param_groups[0]['lr']:.2e}", "step": global_step}
                 )
+
+        if stop_training:
+            break
 
     # Close progress bar
     if pbar is not None:

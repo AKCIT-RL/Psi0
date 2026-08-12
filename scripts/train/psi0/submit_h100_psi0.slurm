@@ -24,6 +24,10 @@ TRAIN_BATCH_SIZE="${TRAIN_BATCH_SIZE:-8}"
 VAL_EPISODE_FRACTION="${VAL_EPISODE_FRACTION:-0.1}"
 VALIDATION_STEPS="${VALIDATION_STEPS:-2500}"
 RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT:-}"
+EARLY_STOPPING="${EARLY_STOPPING:-0}"
+EARLY_STOPPING_PATIENCE="${EARLY_STOPPING_PATIENCE:-}"
+EARLY_STOPPING_MIN_STEPS="${EARLY_STOPPING_MIN_STEPS:-}"
+EARLY_STOPPING_METRIC="${EARLY_STOPPING_METRIC:-}"
 
 DATA_ROOT="$PROJECT_DIR/data"
 RUNS_ROOT="$PROJECT_DIR/.runs"
@@ -79,6 +83,7 @@ echo "Git:       $GIT_COMMIT"
 echo "SIF SHA:   $CONTAINER_SHA256"
 echo "Run:       $EXP_NAME"
 echo "Smoke:     $SMOKE_MODE"
+echo "EarlyStop: $EARLY_STOPPING"
 echo "Container: $SIF_PATH"
 
 apptainer exec --nv --cleanenv \
@@ -92,7 +97,7 @@ apptainer exec --nv --cleanenv \
     --bind "$PSI_HOME_HOST:/workspace/psi_home" \
     --bind "$HF_CACHE_HOST:/workspace/hf_cache" \
     --bind "$WANDB_CACHE_HOST:/workspace/wandb_cache" \
-    --env CUDA_VISIBLE_DEVICES=0 \
+    --env CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}" \
     --env CUDA_LAUNCH_BLOCKING=0 \
     --env PYTHONPATH=/workspace/src \
     --env PSI_HOME=/workspace/psi_home \
@@ -115,6 +120,10 @@ apptainer exec --nv --cleanenv \
     --env VAL_NUM_BATCHES="$VAL_NUM_BATCHES" \
     --env WARMUP_STEPS="$WARMUP_STEPS" \
     --env RESUME_FROM_CHECKPOINT="$RESUME_FROM_CHECKPOINT" \
+    --env EARLY_STOPPING="$EARLY_STOPPING" \
+    --env EARLY_STOPPING_PATIENCE="$EARLY_STOPPING_PATIENCE" \
+    --env EARLY_STOPPING_MIN_STEPS="$EARLY_STOPPING_MIN_STEPS" \
+    --env EARLY_STOPPING_METRIC="$EARLY_STOPPING_METRIC" \
     "$SIF_PATH" \
     bash -lc '
         set -euo pipefail
