@@ -534,7 +534,40 @@ class Trainer(ABC):
         if improved:
             best_dir = self.save_best_checkpoint()
             overwatch.info(f"Saved new best checkpoint to {best_dir}")
+        if should_stop and self.accelerator.is_main_process:
+            self.upload_best_to_hf()
         return should_stop
+
+    def upload_best_to_hf(self) -> None:
+        """Upload checkpoints/best to HF_BEST_UPLOAD_REPO right after early stopping."""
+        repo_id = os.environ.get("HF_BEST_UPLOAD_REPO", "")
+        best_dir = os.path.join(self.project_dir, "checkpoints", "best")
+        if not repo_id:
+            overwatch.warning("HF_BEST_UPLOAD_REPO not set; skipping best-checkpoint upload.")
+            return
+        if not os.path.isdir(best_dir):
+            overwatch.warning(f"Best checkpoint not found at {best_dir}; skipping upload.")
+            return
+        try:
+            from huggingface_hub import HfApi
+
+            api = HfApi()
+            api.create_repo(repo_id, repo_type="model", private=True, exist_ok=True)
+            run_config = os.path.join(self.project_dir, "run_config.json")
+            if os.path.isfile(run_config):
+                api.upload_file(path_or_fileobj=run_config, path_in_repo="run_config.json", repo_id=repo_id)
+            info = api.upload_folder(
+                repo_id=repo_id,
+                folder_path=best_dir,
+                allow_patterns=["*.safetensors", "*.json"],
+                commit_message=(
+                    f"early-stopped best: {self.early_stopping_metric}="
+                    f"{self.early_stopping_state.best_value:.6g}"
+                ),
+            )
+            overwatch.info(f"Uploaded best checkpoint to {repo_id} @ {info.oid}")
+        except Exception as exc:  # upload must never crash training shutdown
+            overwatch.error(f"Failed to upload best checkpoint to {repo_id}: {exc}")
 
     def resume_from_checkpoint(self) -> tuple[int, Optional[str]]:
         """ resume from a checkpoint if specified in the config. 

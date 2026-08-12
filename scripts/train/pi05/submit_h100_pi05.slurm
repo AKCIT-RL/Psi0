@@ -26,6 +26,7 @@ export HF_HOME="$ROOT/cache/huggingface"
 export WANDB_CACHE_DIR="$ROOT/cache/wandb"
 export OMP_NUM_THREADS=16
 export TOKENIZERS_PARALLELISM=false
+export HF_BEST_UPLOAD_REPO="${HF_BEST_UPLOAD_REPO:-AKCITWMOPOC/pi05-g1totemix}"
 
 # train_pytorch.py asserts a .env at cwd
 [[ -e .env ]] || ln -s secrets/psi0.env .env

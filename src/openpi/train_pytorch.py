@@ -286,6 +286,31 @@ def save_best_checkpoint(model, global_step, config, data_config, early_stopping
     logging.info(f"Saved best checkpoint at step {global_step} -> {final_dir}")
 
 
+def upload_best_to_hf(config, es_metric, early_stopping):
+    """Upload checkpoints/best to HF_BEST_UPLOAD_REPO right after early stopping."""
+    repo_id = os.environ.get("HF_BEST_UPLOAD_REPO", "")
+    best_dir = config.checkpoint_dir / "best"
+    if not repo_id:
+        logging.warning("HF_BEST_UPLOAD_REPO not set; skipping best-checkpoint upload.")
+        return
+    if not best_dir.is_dir():
+        logging.warning(f"Best checkpoint not found at {best_dir}; skipping upload.")
+        return
+    try:
+        from huggingface_hub import HfApi
+
+        api = HfApi()
+        api.create_repo(repo_id, repo_type="model", private=True, exist_ok=True)
+        info = api.upload_folder(
+            repo_id=repo_id,
+            folder_path=str(best_dir),
+            commit_message=f"early-stopped best: {es_metric}={early_stopping.best_value:.6g}",
+        )
+        logging.info(f"Uploaded best checkpoint to {repo_id} @ {info.oid}")
+    except Exception as exc:  # upload must never crash training shutdown
+        logging.error(f"Failed to upload best checkpoint to {repo_id}: {exc}")
+
+
 def get_model_state_dict(model):
     """Get state dict from model, handling DDP wrapper."""
     return (
@@ -920,6 +945,7 @@ def train_loop(config: _config.TrainConfig):
                                 f"Early stopping at step {global_step}: {es_metric} did not improve for "
                                 f"{early_stopping.counter} validations (best={early_stopping.best_value:.6f})"
                             )
+                            upload_best_to_hf(config, es_metric, early_stopping)
                         stop_training = True
 
             if stop_training:

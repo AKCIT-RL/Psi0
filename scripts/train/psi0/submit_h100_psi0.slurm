@@ -111,6 +111,7 @@ apptainer exec --nv --cleanenv \
     --env MODEL_REVISION="$MODEL_REVISION" \
     --env CONTAINER_SHA256="$CONTAINER_SHA256" \
     --env SOURCE_SLURM_JOB_ID="${SLURM_JOB_ID:-unknown}" \
+    --env HF_BEST_UPLOAD_REPO="${HF_BEST_UPLOAD_REPO:-AKCITWMOPOC/psi0-g1totemix}" \
     --env TARGET_EPOCHS="$TARGET_EPOCHS" \
     --env TRAIN_BATCH_SIZE="$TRAIN_BATCH_SIZE" \
     --env VAL_EPISODE_FRACTION="$VAL_EPISODE_FRACTION" \
