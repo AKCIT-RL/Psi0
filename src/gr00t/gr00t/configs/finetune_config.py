@@ -122,3 +122,15 @@ class FinetuneConfig:
 
     override_pretraining_statistics: bool = False
     """If True, replace checkpoint-normalization statistics with stats computed from current dataset(s).""" # NOTE: this is only for pretraining from scratch.
+
+    gradient_checkpointing: bool = False
+    """If True, use gradient checkpointing to reduce VRAM usage at the cost of slower training."""
+
+    eval_strategy: str = "steps"
+    """Evaluation strategy: 'no', 'steps', or 'epoch'."""
+
+    eval_steps: int = 1000
+    """Run evaluation every N training steps (used when eval_strategy='steps')."""
+
+    val_split: float = 0.1
+    """Fraction of episodes held out for validation (e.g. 0.1 = last 10% of episodes)."""

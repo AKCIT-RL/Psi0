@@ -30,9 +30,7 @@ At the top, the $\Psi_0$ model consists of two end-to-end trained components: a 
 </p>
 
 ## Table of Contents
-<!-- - [Installation](#-environment-setup) -->
-<!-- - [Pre- & Post- Training](#-) -->
-<!-- - [Data Pre-Processing](#-) -->
+- [Quick Start — Fine-tune on Your Own Data](#quick-start--fine-tune-ψ₀-on-your-own-data)
 - [Finetune Ψ₀ on Unitree G1 Humanoid Robot](#finetune-psi0)
   - [Installation](#installation)
   - [Data Collection](#data-collection)
@@ -57,6 +55,77 @@ At the top, the $\Psi_0$ model consists of two end-to-end trained components: a 
 - [Troubleshootings](#troubleshootings)
 - [Citation](#️-citation)
 
+---
+
+## Quick Start — Fine-tune Ψ₀ on Your Own Data
+
+The fastest way to fine-tune Ψ₀ on a new task is using the generic LeRobot launcher.
+It validates your dataset, downloads checkpoints automatically, computes hyper-parameters, and launches training.
+
+> **Running many datasets on a SLURM + Apptainer cluster?** See
+> [`docs/pipeline_finetune.md`](docs/pipeline_finetune.md) — an automated pipeline that goes
+> from raw `.zip`/Hub datasets to models published on the Hub, with validation gates before
+> anything is deleted. [`docs/runbook_modality.md`](docs/runbook_modality.md) covers the
+> dataset-preparation steps by hand.
+
+### Option A: Native (recommended for development)
+
+```bash
+# 1. Install environment
+git clone https://github.com/physical-superintelligence-lab/Psi0.git && cd Psi0
+uv venv .venv-psi --python 3.10 && source .venv-psi/bin/activate
+GIT_LFS_SKIP_SMUDGE=1 uv sync --all-groups --index-strategy unsafe-best-match --active
+uv pip install flash_attn==2.7.4.post1 --no-build-isolation
+
+# 2. Set environment variables
+cp .env.sample .env   # edit PSI_HOME, HF_TOKEN, WANDB_API_KEY, WANDB_ENTITY
+source .env
+
+# 3. Launch fine-tuning on your LeRobot dataset
+./scripts/train/psi0/finetune-lerobot-psi0.sh /path/to/your/dataset my-task-name
+```
+
+The script handles everything — see [scripts/train/psi0/README.md](scripts/train/psi0/README.md) for full details.
+
+### Option B: Docker (zero host dependencies)
+
+```bash
+# 1. Build image (once)
+docker build -t psi0-train -f docker/Dockerfile .
+
+# 2. Run fine-tuning
+docker run --gpus all --rm \
+  -v /path/to/dataset:/workspace/data/my_dataset \
+  -v /path/to/checkpoints:/workspace/checkpoints/cache/checkpoints \
+  -e WANDB_API_KEY=$WANDB_API_KEY \
+  psi0-train my_dataset
+```
+
+See [scripts/train/psi0/README.md](scripts/train/psi0/README.md) for Docker environment variables and volume mounts.
+
+### Dataset format
+
+Your dataset must follow the [LeRobot v2.1](https://github.com/huggingface/lerobot) format:
+
+```
+my_dataset/
+├── data/chunk-000/
+│   ├── episode_000000.parquet
+│   └── ...
+├── videos/chunk-000/egocentric/
+│   ├── episode_000000.mp4
+│   └── ...
+└── meta/
+    ├── info.json
+    ├── episodes.jsonl
+    ├── tasks.jsonl
+    └── stats_psi0.json
+```
+
+Generate `stats_psi0.json` if missing: `python scripts/data/calc_modality_stats.py --task-dir /path/to/dataset`
+
+---
+
 <a id="finetune-psi0"></a>
 ## Finetune Ψ₀ on Unitree G1 Humanoid Robot
 
@@ -75,12 +144,14 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 Set up the $\Psi_0$ environment:
 
-> ℹ️ We manage the $\Psi_0$ environment and all the baselines through `uv` and they all share the same `src/` code.  See [Environment Management](baselines/README.md) for more details.
+> ℹ️ We manage the $\Psi_0$ environment and all the baselines through `uv` and they all share the same `src/` code.
 
-```
+**CUDA 12 / Python 3.10** (default, tested on RTX 3090/4090):
+```bash
 uv venv .venv-psi --python 3.10
 source .venv-psi/bin/activate
 GIT_LFS_SKIP_SMUDGE=1 uv sync \
+  --extra cuda12 \
   --group serve \
   --group viz \
   --group psi \
@@ -89,11 +160,29 @@ GIT_LFS_SKIP_SMUDGE=1 uv sync \
 uv pip install flash_attn==2.7.4.post1 --no-build-isolation
 ```
 
+**CUDA 13 / Python 3.12** (RTX 5090 / Blackwell):
+```bash
+uv venv .venv-psi --python 3.12
+source .venv-psi/bin/activate
+GIT_LFS_SKIP_SMUDGE=1 uv sync \
+  --extra cuda13 \
+  --group serve \
+  --group viz \
+  --group psi \
+  --index-strategy unsafe-best-match \
+  --active
+uv pip install flash_attn --no-build-isolation
+```
+
 > If you want to support `SIMPLE` evaluation, you can use the following commands to install `SIMPLE` along with `Psi0`. See also [quickstart](examples/quick_start/psi.md).
 
-```
+```bash
 git submodule update --init --recursive
-GIT_LFS_SKIP_SMUDGE=1 uv sync --all-groups --index-strategy unsafe-best-match --active
+GIT_LFS_SKIP_SMUDGE=1 uv sync \
+  --extra cuda12 \
+  --all-groups \
+  --index-strategy unsafe-best-match \
+  --active
 uv pip install flash_attn==2.7.4.post1 --no-build-isolation
 UV_PROJECT_ENVIRONMENT=${pwd}/.venv-psi ./scripts/install_curobo.sh
 ```
@@ -256,9 +345,20 @@ For detailed real-world deployment environment setup, please also refer to the d
 <a id="groot-n16"></a>
 
 ### GR00T
-Install the env 
+Each baseline has its own `pyproject.toml` with `cuda12` and `cuda13` extras, all resolved independently from the main env.
+
+Install the env (CUDA 12 / Python 3.10):
 ```bash
-cd src/gr00t; uv sync
+uv venv .venv-gr00t --python 3.10
+source .venv-gr00t/bin/activate
+uv sync --active --directory src/gr00t --extra cuda12
+```
+
+Install the env (CUDA 13 / Python 3.12):
+```bash
+uv venv .venv-gr00t --python 3.12
+source .venv-gr00t/bin/activate
+uv sync --active --directory src/gr00t --extra cuda13
 ```
 1. training
 ```bash
@@ -277,9 +377,24 @@ cd src/gr00t
 ./scripts/openloop_eval.sh
 ```
 
+> 📄 **Full fine-tuning guide** (memory optimizations, validation split, WandB, nohup): [baselines/gr00t-n1.6/finetune_gr00t.md](baselines/gr00t-n1.6/finetune_gr00t.md)
+
 <a id="openpi-05"></a>
 
 ### OpenPI $\pi_{0.5}$
+
+Install the env (CUDA 12 / Python 3.10 — only supported variant):
+```bash
+uv venv .venv-pi05 --python 3.10
+source .venv-pi05/bin/activate
+GIT_LFS_SKIP_SMUDGE=1 uv sync --active --directory baselines/pi05 --extra cuda12
+```
+
+Apply the required `transformers` patch:
+```bash
+cp -r src/openpi/models_pytorch/transformers_replace/* \
+    .venv-pi05/lib/python3.10/site-packages/transformers/
+```
 
 Please see more detailed instructions here: [baselines/pi05](baselines/pi05/README.md).
 

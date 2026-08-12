@@ -139,7 +139,7 @@ def main() -> int:
     if args.num_workers is not None:
         eval_cfg["num_workers"] = args.num_workers
 
-    gr00t_python = Path(server_cfg.pop("python", DEFAULT_GR00T_PYTHON)).resolve()
+    gr00t_python = Path(server_cfg.pop("python", DEFAULT_GR00T_PYTHON))
     server_host = server_cfg.pop("host", "0.0.0.0")
     server_cfg.pop("port", None)
     wait_host = eval_cfg.get("host", "localhost")

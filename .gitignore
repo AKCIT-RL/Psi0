@@ -25,9 +25,20 @@ runs_old/
 tmp_dir/
 .runs*
 
+# Example / demo datasets (mount at runtime, do not commit)
+pick_cylinder_manipulation_psi/
+
 
 .env
 .env.local
+
+# Apptainer images: multi-GB, built per machine from docker/Dockerfile
+*.sif
+*.sif/
+
+# SLURM job logs and pipeline state — both are per-machine, never shared
+logs/
+.pipeline/
 
 _lerobot_build
 .cache

@@ -13,6 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# =====================================================================================
+# UNUSED BY GR00T N1.7. This module imports fine, but nothing on the N1.7 path calls it:
+# its only consumer is experiment/data_config.py, which is itself dead and unimportable.
+#
+# CAUTION -- the `Normalizer` class below is NOT the normalizer N1.7 uses, and the two
+# disagree on degenerate dimensions. N1.7 normalizes through:
+#     data/state_action/state_action_processor.py::StateActionProcessor
+#     data/utils.py::normalize_values_minmax / unnormalize_values_minmax
+# Reading this file to reason about live normalization behaviour will mislead you.
+#
+# Kept (not deleted) because src/gr00t is a vendored upstream copy.
+# =====================================================================================
+
 import functools
 import random
 from typing import Any, ClassVar

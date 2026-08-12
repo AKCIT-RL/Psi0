@@ -87,7 +87,7 @@ if __name__ == "__main__":
 
     config.training.start_from_checkpoint = ft_config.base_model_path
     config.training.reinit_action_head = ft_config.reinit_action_head
-    config.training.optim = "adamw_torch"
+    config.training.optim = "adamw_bnb_8bit"
     config.training.global_batch_size = ft_config.global_batch_size
     config.training.dataloader_num_workers = ft_config.dataloader_num_workers
     config.training.learning_rate = ft_config.learning_rate
@@ -100,6 +100,10 @@ if __name__ == "__main__":
     config.training.max_steps = ft_config.max_steps
     config.training.weight_decay = ft_config.weight_decay
     config.training.warmup_ratio = ft_config.warmup_ratio
+    config.training.gradient_checkpointing = ft_config.gradient_checkpointing
+    config.training.eval_strategy = ft_config.eval_strategy
+    config.training.eval_steps = ft_config.eval_steps
+    config.training.eval_set_split_ratio = ft_config.val_split
     config.training.wandb_project = "finetune-gr00t-n1d6"
 
     config.data.shard_size = ft_config.shard_size

@@ -1348,7 +1348,7 @@ _CONFIGS = [
             max_token_len=250,
         ),
         data=LeRobotHFMDataConfig(
-            repo_id=f"{os.environ['PSI_HOME']}/data/simple/G1WholebodyLocomotionPickBetweenTablesTeleop-v0",
+            repo_id=f"/workspace/data/G1WholebodyLocomotionPickBetweenTablesTeleop-v0",
             base_config=DataConfig(prompt_from_task=True),
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_droid/params"),

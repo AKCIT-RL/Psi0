@@ -10,6 +10,7 @@ from gr00t.data.types import ActionConfig, ActionFormat, ActionRepresentation, A
 from .data.data_config import DataConfig, SingleDatasetConfig
 from .model import create_model_union_type
 from .model.gr00t_n1d6 import Gr00tN1d6Config
+from .model.gr00t_n1d7 import Gr00tN1d7Config
 from .training.training_config import TrainingConfig
 
 
@@ -129,6 +130,12 @@ class Config:
             assert self.model.backbone_model_type in [
                 "eagle",
             ], f"Invalid backbone model type: {self.model.backbone_model_type}"
+
+        elif isinstance(self.model, Gr00tN1d7Config):
+            assert self.model.backbone_model_type in [
+                "qwen",
+                "qwen3",
+            ], f"Invalid backbone model type for N1.7: {self.model.backbone_model_type}"
 
         # Validate precision settings
         if self.training.fp16 and self.training.bf16:

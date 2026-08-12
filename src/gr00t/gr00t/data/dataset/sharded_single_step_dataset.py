@@ -123,6 +123,7 @@ class ShardedSingleStepDataset(ShardedDataset):
         episode_sampling_rate: float = 0.1,
         seed: int = 42,
         allow_padding: bool = False,
+        episode_indices: list[int] | None = None,
     ):
         """Initialize single-step dataset with sharding configuration."""
         super().__init__(dataset_path)
@@ -134,6 +135,7 @@ class ShardedSingleStepDataset(ShardedDataset):
         self.episode_sampling_rate = episode_sampling_rate
         self.seed = seed
         self.allow_padding = allow_padding
+        self.episode_indices = episode_indices
         self.processor = None
         self.rng = np.random.default_rng(seed)
         action_delta_indices = modality_configs["action"].delta_indices
@@ -164,7 +166,9 @@ class ShardedSingleStepDataset(ShardedDataset):
         - Diversity within shards (mix of episodes and timesteps)
         - Reproducible sharding based on seed
         """
-        shuffled_episode_indices = self.rng.permutation(len(self.episode_loader.episode_lengths))
+        shuffled_episode_indices = self.rng.permutation(
+            self.episode_indices if self.episode_indices is not None else len(self.episode_loader.episode_lengths)
+        )
         num_splits = int(1 / self.episode_sampling_rate)
 
         assert len(shuffled_episode_indices) > 0, (

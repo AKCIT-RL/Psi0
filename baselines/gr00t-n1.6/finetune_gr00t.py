@@ -110,6 +110,10 @@ def _build_launch_finetune_args(preset: dict[str, Any]) -> dict[str, Any]:
         "learning_rate": training_cfg.get("learning_rate"),
         "global_batch_size": training_cfg.get("global_batch_size"),
         "dataloader_num_workers": training_cfg.get("dataloader_num_workers"),
+        "use_wandb": training_cfg.get("use_wandb"),
+        "eval_strategy": training_cfg.get("eval_strategy", "steps"),
+        "eval_steps": training_cfg.get("eval_steps", 1000),
+        "val_split": training_cfg.get("val_split", 0.1),
     }
     color_jitter = augment_cfg.get("color_jitter")
     if color_jitter:
@@ -155,6 +159,7 @@ def main() -> int:
     parser.add_argument("--cuda-visible-devices", help="Override CUDA_VISIBLE_DEVICES.")
     parser.add_argument("--master-port", type=int, help="Override torchrun master port.")
     parser.add_argument("--num-gpus", type=int, help="Override launcher --num-gpus.")
+    parser.add_argument("--use-wandb", action="store_true", default=None, help="Enable wandb logging.")
     parser.add_argument("--dry-run", action="store_true", help="Print command and exit.")
     args = parser.parse_args()
 
@@ -200,9 +205,16 @@ def main() -> int:
         launcher_args["num_gpus"] = args.num_gpus
     elif launcher_args.get("num_gpus") is None:
         launcher_args["num_gpus"] = nproc_per_node
+    if args.use_wandb:
+        launcher_args["use_wandb"] = True
 
     for key, value in preset.get("env", {}).items():
         env[str(key)] = str(value)
+
+    # Keep modality config lookup in sync with CLI dataset override.
+    if args.dataset_path:
+        env["DATASET_PATH"] = str(args.dataset_path)
+        env["SIMPLE_DATASET_PATH"] = str(args.dataset_path)
 
     cmd = [
         str(GR00T_PYTHON),

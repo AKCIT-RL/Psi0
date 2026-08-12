@@ -22,18 +22,21 @@ class DatasetFactory:
         self, processor: BaseProcessor
     ) -> tuple[ShardedMixtureDataset, ShardedMixtureDataset | None]:
         """Build the dataset. Returns a tuple of (train_dataset, eval_dataset)."""
-        assert self.config.training.eval_strategy == "no", (
-            "Sharded dataset does not support evaluation sets"
-        )
+        use_eval = self.config.training.eval_strategy != "no"
+        val_split: float = getattr(self.config.training, "val_split", 0.1)
 
-        all_datasets = []
-        all_weights = []
+        all_train_datasets = []
+        all_eval_datasets = []
+        all_train_weights = []
+        all_eval_weights = []
+
         for dataset_spec in tqdm(
             self.config.data.datasets,
             total=len(self.config.data.datasets),
             desc="Initializing datasets",
         ):
-            datasets = []
+            train_datasets = []
+            eval_datasets = []
             for dataset_path in dataset_spec.dataset_paths:
                 embodiment_tag = dataset_spec.embodiment_tag
                 assert embodiment_tag is not None, "Embodiment tag is required"
@@ -47,7 +50,8 @@ class DatasetFactory:
                     generate_rel_stats(dataset_path, EmbodimentTag(embodiment_tag))
                 if torch.distributed.is_initialized():
                     torch.distributed.barrier()
-                dataset = ShardedSingleStepDataset(
+
+                common_kwargs = dict(
                     dataset_path=dataset_path,
                     embodiment_tag=EmbodimentTag(embodiment_tag),
                     modality_configs=self.config.data.modality_configs[embodiment_tag],
@@ -57,23 +61,66 @@ class DatasetFactory:
                     seed=self.config.data.seed,
                     allow_padding=self.config.data.allow_padding,
                 )
-                datasets.append(dataset)
-            dataset_lengths = np.array([len(dataset) for dataset in datasets])
-            dataset_relative_lengths = dataset_lengths / dataset_lengths.sum()
-            for dataset, relative_length in zip(datasets, dataset_relative_lengths):
-                weight = relative_length * dataset_spec.mix_ratio
-                all_datasets.append(dataset)
-                all_weights.append(weight)
 
-        return (
-            ShardedMixtureDataset(
-                datasets=all_datasets,
-                weights=all_weights,
+                if use_eval:
+                    # Deterministic episode split: last val_split fraction held out for eval.
+                    from gr00t.data.dataset.lerobot_episode_loader import LeRobotEpisodeLoader
+                    ep_loader = LeRobotEpisodeLoader(
+                        dataset_path=dataset_path,
+                        modality_configs=self.config.data.modality_configs[embodiment_tag],
+                        video_backend=self.config.data.video_backend,
+                    )
+                    n_episodes = len(ep_loader.episode_lengths)
+                    val_split = getattr(self.config.training, "eval_set_split_ratio", 0.1)
+                    n_val = max(1, int(n_episodes * val_split))
+                    n_train = n_episodes - n_val
+                    train_indices = list(range(n_train))
+                    val_indices = list(range(n_train, n_episodes))
+
+                    train_ds = ShardedSingleStepDataset(**common_kwargs, episode_indices=train_indices)
+                    eval_kwargs = {**common_kwargs, "episode_sampling_rate": 1.0}
+                    eval_ds = ShardedSingleStepDataset(**eval_kwargs, episode_indices=val_indices)
+                    train_datasets.append(train_ds)
+                    eval_datasets.append(eval_ds)
+                else:
+                    dataset = ShardedSingleStepDataset(**common_kwargs)
+                    train_datasets.append(dataset)
+
+            dataset_lengths = np.array([len(ds) for ds in train_datasets])
+            dataset_relative_lengths = dataset_lengths / dataset_lengths.sum()
+            for ds, relative_length in zip(train_datasets, dataset_relative_lengths):
+                weight = relative_length * dataset_spec.mix_ratio
+                all_train_datasets.append(ds)
+                all_train_weights.append(weight)
+
+            if use_eval:
+                eval_lengths = np.array([len(ds) for ds in eval_datasets])
+                eval_relative_lengths = eval_lengths / eval_lengths.sum()
+                for ds, relative_length in zip(eval_datasets, eval_relative_lengths):
+                    weight = relative_length * dataset_spec.mix_ratio
+                    all_eval_datasets.append(ds)
+                    all_eval_weights.append(weight)
+
+        train_mixture = ShardedMixtureDataset(
+            datasets=all_train_datasets,
+            weights=all_train_weights,
+            processor=processor,
+            seed=self.config.data.seed,
+            training=True,
+            num_shards_per_epoch=self.config.data.num_shards_per_epoch,
+            override_pretraining_statistics=self.config.data.override_pretraining_statistics,
+        )
+
+        eval_mixture = None
+        if use_eval:
+            eval_mixture = ShardedMixtureDataset(
+                datasets=all_eval_datasets,
+                weights=all_eval_weights,
                 processor=processor,
                 seed=self.config.data.seed,
-                training=True,
+                training=False,
                 num_shards_per_epoch=self.config.data.num_shards_per_epoch,
                 override_pretraining_statistics=self.config.data.override_pretraining_statistics,
-            ),
-            None,
-        )
+            )
+
+        return train_mixture, eval_mixture
