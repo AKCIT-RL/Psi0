@@ -1391,7 +1391,118 @@ _CONFIGS = [
         policy_metadata={"dataset": "G1WholebodyTabletopGraspMP-v0"},
         checkpoint_base_dir=f".runs/openpi-05"
     ),
-    
+    #
+    # WEG configs
+    #
+
+    TrainConfig(
+        name="G1IndustrialScrewdriverToToteTeleop-v0",
+        project_name="psi",
+        num_workers=8,
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_dim=36,
+            action_horizon=30,
+            max_token_len=250,
+        ),
+        data=LeRobotHFMDataConfig(
+            repo_id=f"{os.environ['PSI_HOME']}/data/gustavo-mota/G1IndustrialScrewdriverToToteTeleop-v0",
+            base_config=DataConfig(prompt_from_task=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_droid/params"),
+        num_train_steps=40_000,
+        batch_size=128,
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=1_000,
+            peak_lr=1e-4,
+            decay_steps=40_000,
+            decay_lr=1e-8,
+        ),
+        pytorch_weight_path=f"{os.environ['PSI_HOME']}/cache/checkpoints/openpi/pi05_droid",
+        policy_metadata={"dataset": "G1IndustrialScrewdriverToToteTeleop-v0"},
+        checkpoint_base_dir=f".runs/openpi-05"
+    ),
+    TrainConfig(
+        name="G1IndustrialSortingTeleop-psi0",
+        project_name="psi",
+        num_workers=8,
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_dim=36,
+            action_horizon=30,
+            max_token_len=250,
+        ),
+        data=LeRobotHFMDataConfig(
+            repo_id=f"{os.environ['PSI_HOME']}/data/gustavo-mota/G1IndustrialSortingTeleop-psi0",
+            base_config=DataConfig(prompt_from_task=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_droid/params"),
+        num_train_steps=40_000,
+        batch_size=128,
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=1_000,
+            peak_lr=1e-4,
+            decay_steps=40_000,
+            decay_lr=1e-8,
+        ),
+        pytorch_weight_path=f"{os.environ['PSI_HOME']}/cache/checkpoints/openpi/pi05_droid",
+        policy_metadata={"dataset": "G1IndustrialSortingTeleop-psi0"},
+        checkpoint_base_dir=f".runs/openpi-05"
+    ),
+        TrainConfig(
+        name="G1WholebodyLocomotionPickTotesShelfToTableTeleop",
+        project_name="psi",
+        num_workers=8,
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_dim=36,
+            action_horizon=30,
+            max_token_len=250,
+        ),
+        data=LeRobotHFMDataConfig(
+            repo_id=f"{os.environ['PSI_HOME']}/data/lGabrielJJ/G1WholebodyLocomotionPickTotesShelfToTableTeleop",
+            base_config=DataConfig(prompt_from_task=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_droid/params"),
+        num_train_steps=40_000,
+        batch_size=128,
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=1_000,
+            peak_lr=1e-4,
+            decay_steps=40_000,
+            decay_lr=1e-8,
+        ),
+        pytorch_weight_path=f"{os.environ['PSI_HOME']}/cache/checkpoints/openpi/pi05_droid",
+        policy_metadata={"dataset": "G1WholebodyLocomotionPickTotesShelfToTableTeleop"},
+        checkpoint_base_dir=f".runs/openpi-05"
+    ),
+        TrainConfig(
+        name="G1PickUpToteFromShelfToDeskPsi0",
+        project_name="psi",
+        num_workers=8,
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_dim=36,
+            action_horizon=30,
+            max_token_len=250,
+        ),
+        data=LeRobotHFMDataConfig(
+            repo_id=f"{os.environ['PSI_HOME']}/data/AKCITWMOPOC/G1PickUpToteFromShelfToDeskPsi0",
+            base_config=DataConfig(prompt_from_task=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_droid/params"),
+        num_train_steps=40_000,
+        batch_size=128,
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=1_000,
+            peak_lr=1e-4,
+            decay_steps=40_000,
+            decay_lr=1e-8,
+        ),
+        pytorch_weight_path=f"{os.environ['PSI_HOME']}/cache/checkpoints/openpi/pi05_droid",
+        policy_metadata={"dataset": "G1PickUpToteFromShelfToDeskPsi0"},
+        checkpoint_base_dir=f".runs/openpi-05"
+    ),
     #
     # ALOHA Sim configs. This config is used to demonstrate how to train on a simple simulated environment.
     #

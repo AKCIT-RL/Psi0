@@ -16,7 +16,10 @@ fi
 RUN_DIR=$1
 CKPT_STEP=$2
 
-uv run --active --group psi --group serve serve_psi0 \
+CUDA_EXTRA=${PSI_CUDA_EXTRA:-cuda13}
+echo "Using uv extra: $CUDA_EXTRA"
+
+uv run --active --extra "$CUDA_EXTRA" --no-default-groups --group psi --group serve serve_psi0 \
     --host 0.0.0.0 \
     --port 22085 \
     --policy=psi0 \

@@ -7,13 +7,15 @@ import numpy as np
 import os.path as osp
 from pathlib import Path
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from PIL import Image
 from typing import Union, Dict, Any, List
 from base64 import b64decode, b64encode
 from fastapi.responses import JSONResponse
 from numpy.lib.format import descr_to_dtype, dtype_to_descr
 from torchvision.transforms import v2
+import msgpack
+import msgpack_numpy
 
 from psi.deploy.helpers import *
 from psi.config.config import LaunchConfig, ServerConfig

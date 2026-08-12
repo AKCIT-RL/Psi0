@@ -118,7 +118,7 @@ class ServerConfig(BaseModel):
     action_exec_horizon: int | None = None
     rtc: bool = False
     run_dir: str 
-    ckpt_step: int 
+    ckpt_step: int | str = "latest"
 
     @model_validator(mode="after")
     def set_policy(self):

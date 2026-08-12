@@ -371,17 +371,32 @@ def parse_args_to_tyro_config(args_or_script_path: Path | str, force_rewrite_con
     assert len(argv) > 1, "Please put all arguments in a spererate variable, eg., args=..."
     sys.argv = argv
 
+    # By convention, the first argument after the script name is the config module name,
+    # eg., {trainer}_{data}_{model}_config, which corresponds to
+    # psi.config.train.pretrain_egodex_qwen3vl_config.
     try:
-        # By convention, the first argument after the script name is the config module name, 
-        # eg., {trainer}_{data}_{model}_config, which corresponds to psi.config.train.pretrain_egodex_qwen3vl_config
         module = importlib.import_module(f"psi.config.train.{sys.argv[1]}")
-        DynamicLaunchConfigClass =  getattr(module, "DynamicLaunchConfig")
-        config = tyro.cli(DynamicLaunchConfigClass, config=(tyro.conf.ConsolidateSubcommandArgs,), args=sys.argv[2:])
+        DynamicLaunchConfigClass = getattr(module, "DynamicLaunchConfig")
     except Exception as e:
         print(f"Failed to import config module 'psi.config.train.{sys.argv[1]}'")
         raise e
 
-    return config
+    try:
+        return tyro.cli(
+            DynamicLaunchConfigClass,
+            config=(tyro.conf.ConsolidateSubcommandArgs,),
+            args=sys.argv[2:],
+        )
+    except (Exception, SystemExit) as e:
+        # Some historical argv.txt files contain options that no longer exist.
+        # Serving only needs the dynamic config class to validate run_config.json,
+        # so we fall back instead of failing on strict argv parsing.
+        print(
+            "Warning: failed to parse saved argv with tyro; "
+            "falling back to DynamicLaunchConfig class. "
+            f"Reason: {e}"
+        )
+        return DynamicLaunchConfigClass
 
 def batchify(data):
     data = deepcopy(data)
