@@ -62,6 +62,12 @@ At the top, the $\Psi_0$ model consists of two end-to-end trained components: a 
 The fastest way to fine-tune Ψ₀ on a new task is using the generic LeRobot launcher.
 It validates your dataset, downloads checkpoints automatically, computes hyper-parameters, and launches training.
 
+> **Running many datasets on a SLURM + Apptainer cluster?** See
+> [`docs/pipeline_finetune.md`](docs/pipeline_finetune.md) — an automated pipeline that goes
+> from raw `.zip`/Hub datasets to models published on the Hub, with validation gates before
+> anything is deleted. [`docs/runbook_modality.md`](docs/runbook_modality.md) covers the
+> dataset-preparation steps by hand.
+
 ### Option A: Native (recommended for development)
 
 ```bash

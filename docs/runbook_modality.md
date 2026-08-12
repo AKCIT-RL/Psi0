@@ -10,6 +10,37 @@ certo".
 
 ---
 
+## Caminho automatizado (use este)
+
+Todo o procedimento abaixo está implementado em `scripts/prepare_simple_datasets.py`,
+com os mesmos portões: ele só apaga o dataset cru depois que a validação e a conferência
+física passam, e se recusa a produzir um dataset que não consegue justificar.
+
+```bash
+PY=src/gr00t/.venv-gr00t/bin/python
+
+$PY scripts/prepare_simple_datasets.py --list        # o que cada .zip contém
+$PY scripts/prepare_simple_datasets.py               # prepara tudo que falta
+./run_pipeline.sh --dry-run                          # prepara + planeja treino/upload
+./run_pipeline.sh                                    # submete as cadeias no SLURM
+```
+
+Cada dataset pronto ganha um `PROVENANCE.json` com o zip de origem, o sha256, o schema
+detectado, o conversor usado e as medições da conferência física. Sem esse arquivo, o
+`run_pipeline.sh` ignora o diretório: um dataset cuja procedência não foi registrada não
+entra em treino automaticamente.
+
+O restante deste runbook continua valendo — é a referência para entender o que o script
+faz e para investigar à mão quando ele se recusa a prosseguir.
+
+**Os arquivos não têm o mesmo formato.** Não monte o caminho do dataset; procure o
+diretório que contém `meta/info.json`. Três dos dez `.zip` guardam outros `.zip` dentro,
+um traz dois datasets diferentes, e no OpenOven os dois arquivos internos descompactam
+para o *mesmo* caminho — extrair os dois na mesma pasta faz um sobrescrever o outro em
+silêncio.
+
+---
+
 ## 0. Pré-requisitos
 
 Os scripts precisam apenas de `numpy`, `pandas`, `pyarrow` e `tqdm`, todos presentes no
