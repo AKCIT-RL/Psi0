@@ -14,6 +14,8 @@ GIT_LFS_SKIP_SMUDGE=1 uv sync --directory src/gr00t --extra cuda12 --active
 
 ### Training
 
+The launcher command is:
+
 ```bash
 python3 baselines/gr00t-n1.7/launch_finetune_n1d7.py \
   --preset finetune_simple \
@@ -22,7 +24,40 @@ python3 baselines/gr00t-n1.7/launch_finetune_n1d7.py \
   --output-dir ./checkpoints/gr00t_n1d7_finetune
 ```
 
-Use `--dry-run` to inspect the generated command before launching.
+For a quick check, you can also run:
+
+```bash
+python3 baselines/gr00t-n1.7/launch_finetune_n1d7.py --preset finetune_simple --dry-run
+```
+
+### Script Arguments
+
+- `--preset`: preset name or YAML path; defaults to `finetune_simple`.
+- `--base-model-path`: overrides `model.base_model_path` from the preset.
+- `--dataset-path`: overrides `dataset.path` from the preset.
+- `--output-dir`: overrides `training.output_dir` from the preset.
+- `--embodiment-tag`: overrides `dataset.embodiment_tag` from the preset.
+- `--cuda-visible-devices`: overrides `runtime.cuda_visible_devices`.
+- `--num-gpus`: overrides `training.num_gpus`.
+- `--dry-run`: prints the resolved distributed command without launching it.
+
+### Preset Fields
+
+The launcher resolves the selected YAML preset and reads these sections:
+
+- `runtime.cuda_visible_devices`: sets `CUDA_VISIBLE_DEVICES` and the default process count.
+- `runtime.master_port`: forwarded to `torch.distributed.run`.
+- `model.base_model_path`: the GR00T checkpoint or Hub model to fine-tune.
+- `dataset.path`: dataset path passed to the inner launcher.
+- `dataset.embodiment_tag`: embodiment tag passed to the inner launcher.
+- `dataset.modality_config_path`: optional modality config path.
+- `training.*`: training flags forwarded to the inner launcher, including `num_gpus`.
+- `env.*`: extra environment variables injected into the subprocess environment.
+
+### Environment Variables
+
+- `CUDA_VISIBLE_DEVICES`: set automatically from `runtime.cuda_visible_devices`; can be overridden by the shell or `--cuda-visible-devices`.
+- Any key under `env` in the selected preset is added to the subprocess environment.
 
 ### Serving
 
