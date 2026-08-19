@@ -540,6 +540,8 @@ class Trainer(ABC):
 
     def upload_best_to_hf(self) -> None:
         """Upload checkpoints/best to HF_BEST_UPLOAD_REPO right after early stopping."""
+        if getattr(self, "_best_uploaded", False):
+            return
         repo_id = os.environ.get("HF_BEST_UPLOAD_REPO", "")
         best_dir = os.path.join(self.project_dir, "checkpoints", "best")
         if not repo_id:
@@ -566,6 +568,7 @@ class Trainer(ABC):
                 ),
             )
             overwatch.info(f"Uploaded best checkpoint to {repo_id} @ {info.oid}")
+            self._best_uploaded = True
         except Exception as exc:  # upload must never crash training shutdown
             overwatch.error(f"Failed to upload best checkpoint to {repo_id}: {exc}")
 

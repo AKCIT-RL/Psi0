@@ -325,6 +325,9 @@ def train(config: LaunchConfig):
             break
 
     accelerator.wait_for_everyone()
+    # end-of-training safety net: covers runs that hit max steps without early stop
+    if config.train.early_stopping and accelerator.is_main_process:
+        trainer.upload_best_to_hf()
     trainer.finalize()
     overwatch.info("Happy Ending!")
     accelerator.end_training()
