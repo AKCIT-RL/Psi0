@@ -130,77 +130,23 @@ Generate `stats_psi0.json` if missing: `python scripts/data/calc_modality_stats.
 ## Finetune Ψ₀ on Unitree G1 Humanoid Robot
 
 ### Installation
+The Psi0 setup lives in [baselines/psi0/README.md](baselines/psi0/README.md).
+The training and deployment script details live in [scripts/train/psi0/README.md](scripts/train/psi0/README.md).
 
-Clone the project and change directory to the project root:
-```bash
-git clone git@github.com:physical-superintelligence-lab/Psi0.git 
-cd Psi0
-```
-We use [uv](https://docs.astral.sh/uv/getting-started/installation/) to manage Python dependencies. Install `uv` if not already installed:
+If you only want the shared runtime environment, the short version is:
 
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-Set up the $\Psi_0$ environment:
-
-> ℹ️ We manage the $\Psi_0$ environment and all the baselines through `uv` and they all share the same `src/` code.
-
-**CUDA 12 / Python 3.10** (default, tested on RTX 3090/4090):
 ```bash
 uv venv .venv-psi --python 3.10
 source .venv-psi/bin/activate
 GIT_LFS_SKIP_SMUDGE=1 uv sync \
-  --extra cuda12 \
   --group serve \
   --group viz \
   --group psi \
   --index-strategy unsafe-best-match \
   --active
-uv pip install flash_attn==2.7.4.post1 --no-build-isolation
 ```
 
-**CUDA 13 / Python 3.12** (RTX 5090 / Blackwell):
-```bash
-uv venv .venv-psi --python 3.12
-source .venv-psi/bin/activate
-GIT_LFS_SKIP_SMUDGE=1 uv sync \
-  --extra cuda13 \
-  --group serve \
-  --group viz \
-  --group psi \
-  --index-strategy unsafe-best-match \
-  --active
-uv pip install flash_attn --no-build-isolation
-```
-
-> If you want to support `SIMPLE` evaluation, you can use the following commands to install `SIMPLE` along with `Psi0`. See also [quickstart](examples/quick_start/psi.md).
-
-```bash
-git submodule update --init --recursive
-GIT_LFS_SKIP_SMUDGE=1 uv sync \
-  --extra cuda12 \
-  --all-groups \
-  --index-strategy unsafe-best-match \
-  --active
-uv pip install flash_attn==2.7.4.post1 --no-build-isolation
-UV_PROJECT_ENVIRONMENT=${pwd}/.venv-psi ./scripts/install_curobo.sh
-```
-
-Test installation, a version number should be displayed.
-```bash
-python -c "import psi;print(psi.__version__);"
-```
-
-Verify `SIMPLE` installation
-``` bash
-python -c "import simple; print(simple.__version__)"
-```
-
-Verify the shared `lerobot` stack is importable.
-```bash
-python -c "from psi.data.lerobot.compat import LEROBOT_LAYOUT; print(LEROBOT_LAYOUT)"
-```
+For SIMPLE evaluation, follow [examples/quick_start/psi.md](examples/quick_start/psi.md).
 
 ### Data Collection
 > 📂 We open-sourced all the 9 real-world tasks. You can directly download the data and jump to the [Fine-Tuning](#training-real).
@@ -345,58 +291,12 @@ For detailed real-world deployment environment setup, please also refer to the d
 <a id="groot-n16"></a>
 
 ### GR00T
-Each baseline has its own `pyproject.toml` with `cuda12` and `cuda13` extras, all resolved independently from the main env.
-
-Install the env (CUDA 12 / Python 3.10):
-```bash
-uv venv .venv-gr00t --python 3.10
-source .venv-gr00t/bin/activate
-uv sync --active --directory src/gr00t --extra cuda12
-```
-
-Install the env (CUDA 13 / Python 3.12):
-```bash
-uv venv .venv-gr00t --python 3.12
-source .venv-gr00t/bin/activate
-uv sync --active --directory src/gr00t --extra cuda13
-```
-1. training
-```bash
-cd src/gr00t
-./scripts/train_gr00t.sh --dataset-path /your/lerobot/dataset
-```
-2. serving a checkpoint
-```bash
-cd src/gr00t
-./scripts/deploy_gr00t.sh
-```
-
-3. openloop eval on trained checkpoint using gt
-```bash
-cd src/gr00t
-./scripts/openloop_eval.sh
-```
-
-> 📄 **Full fine-tuning guide** (memory optimizations, validation split, WandB, nohup): [baselines/gr00t-n1.6/finetune_gr00t.md](baselines/gr00t-n1.6/finetune_gr00t.md)
+GR00T N1.7 setup, fine-tuning, serving, and open-loop evaluation now live in [baselines/gr00t-n1.7/README.md](baselines/gr00t-n1.7/README.md).
 
 <a id="openpi-05"></a>
 
 ### OpenPI $\pi_{0.5}$
-
-Install the env (CUDA 12 / Python 3.10 — only supported variant):
-```bash
-uv venv .venv-pi05 --python 3.10
-source .venv-pi05/bin/activate
-GIT_LFS_SKIP_SMUDGE=1 uv sync --active --directory baselines/pi05 --extra cuda12
-```
-
-Apply the required `transformers` patch:
-```bash
-cp -r src/openpi/models_pytorch/transformers_replace/* \
-    .venv-pi05/lib/python3.10/site-packages/transformers/
-```
-
-Please see more detailed instructions here: [baselines/pi05](baselines/pi05/README.md).
+OpenPI $\pi_{0.5}$ setup, training, and serving now live in [baselines/pi05/README.md](baselines/pi05/README.md).
 
 ### InternVLA-M1
 Install the env 

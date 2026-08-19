@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "gr00t"
 version = "0.1.0"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.11"
 # Mirror the main repo's baseline dependencies so install behaves the same.
 dependencies = [
     "albumentations==1.4.18",
@@ -21,10 +21,12 @@ dependencies = [
     "peft==0.17.1",
     "termcolor==3.2.0",
     #"torch==2.7.0",
-    "transformers==4.51.3",
+    "transformers>=4.57.0",
     "tyro==0.9.17",
     #"flash-attn==2.7.4.post1",
     "click==8.1.8",
+    "fastapi",
+    "uvicorn",
     "datasets==3.6.0",
     "einops==0.8.1",
     "gymnasium==1.2.2",
@@ -35,6 +37,7 @@ dependencies = [
     #"torchcodec==0.4.0",
     "wandb==0.23.0",
     "pyzmq==27.0.1",
+    "python-dotenv",
     #"deepspeed==0.17.6",
     # torch / torchvision / flash-attn added via cuda12 or cuda13 extras below
 ]
@@ -42,17 +45,17 @@ dependencies = [
 [project.optional-dependencies]
 # Python 3.10 + CUDA 12.x
 cuda12 = [
-    "torch>=2.7.0",
-    "torchvision>=0.27.0",
+    "torch>=2.7.0,<2.13",
+    "torchvision>=0.27.0,<0.29",
     "deepspeed==0.17.1",
     "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.17/flash_attn-2.6.3+cu126torch2.12-cp310-cp310-linux_x86_64.whl ; python_version == '3.10' and sys_platform == 'linux' and platform_machine == 'x86_64' and extra == 'cuda12'",
 ]
 
-# Python 3.12 + CUDA 13.x
+# Python 3.10+ + CUDA 13.x
 cuda13 = [
-    "torch>=2.11.0 ; python_version >= '3.12'",
-    "torchvision>=0.21.0 ; python_version >= '3.12'",
-    "deepspeed==0.17.1 ; python_version >= '3.12'",
+    "torch>=2.11.0",
+    "torchvision>=0.21.0",
+    "deepspeed==0.17.1",
     "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn-2.8.3+cu130torch2.11-cp312-cp312-linux_x86_64.whl ; python_version >= '3.12' and sys_platform == 'linux' and platform_machine == 'x86_64' and extra == 'cuda13'",
 ]
 

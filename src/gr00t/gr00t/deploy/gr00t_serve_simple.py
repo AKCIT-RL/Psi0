@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import traceback
+from base64 import b64decode, b64encode
 from dataclasses import dataclass
 from typing import Any
 
@@ -10,11 +11,94 @@ import tyro
 import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from numpy.lib.format import descr_to_dtype, dtype_to_descr
 
 from gr00t.data.embodiment_tags import EmbodimentTag
 from gr00t.policy.gr00t_policy import Gr00tPolicy, Gr00tSimPolicyWrapper
 
-from psi.deploy.helpers import RequestMessage, ResponseMessage
+try:
+    from psi.deploy.helpers import RequestMessage, ResponseMessage
+except ImportError:
+    def numpy_serialize(o: Any) -> dict[str, Any]:
+        if isinstance(o, (np.ndarray, np.generic)):
+            data = o.data if o.flags["C_CONTIGUOUS"] else o.tobytes()
+            return {
+                "__numpy__": b64encode(data).decode(),
+                "dtype": dtype_to_descr(o.dtype),
+                "shape": o.shape,
+            }
+
+        msg = f"Object of type {o.__class__.__name__} is not JSON serializable"
+        raise TypeError(msg)
+
+
+    def numpy_deserialize(dct: dict[str, Any]) -> Any:
+        if "__numpy__" in dct:
+            np_obj = np.frombuffer(b64decode(dct["__numpy__"]), descr_to_dtype(dct["dtype"]))
+            return np_obj.reshape(shape) if (shape := dct["shape"]) else np_obj[0]
+        return dct
+
+
+    def convert_numpy_in_dict(data: Any, func: Any) -> Any:
+        if isinstance(data, dict):
+            if "__numpy__" in data:
+                return func(data)
+            return {key: convert_numpy_in_dict(value, func) for key, value in data.items()}
+        if isinstance(data, list):
+            return [convert_numpy_in_dict(item, func) for item in data]
+        if isinstance(data, (np.ndarray, np.generic)):
+            return func(data)
+        return data
+
+
+    class RequestMessage:
+        def __init__(
+            self,
+            image: dict[str, Any],
+            instruction: str,
+            history: dict[str, Any],
+            state: dict[str, Any],
+            condition: dict[str, Any],
+            gt_action: Any,
+            dataset_name: str,
+            timestamp: str,
+        ):
+            self.image = image
+            self.instruction = instruction
+            self.history = history
+            self.state = state
+            self.condition = condition
+            self.gt_action = gt_action
+            self.dataset_name = dataset_name
+            self.timestamp = timestamp
+
+        @classmethod
+        def deserialize(cls, response: dict[str, Any]) -> "RequestMessage":
+            response = convert_numpy_in_dict(response, numpy_deserialize)
+            return cls(
+                image=response["image"],
+                instruction=response["instruction"],
+                history=response["history"],
+                state=response["state"],
+                condition=response["condition"],
+                gt_action=response["gt_action"],
+                dataset_name=response["dataset_name"],
+                timestamp=response["timestamp"],
+            )
+
+
+    class ResponseMessage:
+        def __init__(self, action: np.ndarray, err: float):
+            self.action = action
+            self.err = err
+
+        def serialize(self) -> dict[str, Any]:
+            msg = {
+                "action": self.action,
+                "err": self.err,
+                "traj_image": np.zeros((1, 1, 3), dtype=np.uint8),
+            }
+            return convert_numpy_in_dict(msg, numpy_serialize)
 
 
 @dataclass

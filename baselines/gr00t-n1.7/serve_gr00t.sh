@@ -2,33 +2,30 @@
 set -euo pipefail
 
 usage() {
-    echo "Usage: $0 <task> [model_path] [port] [command]"
-    echo "  <task>        : Task name (required)"
-    echo "  [model_path]  : Model path (default: nvidia/openpi05-3B)"
-    echo "  [port]        : Port (default: 9000)"
-    echo "  [command]     : run|start|stop|status|logs (default: run)"
+    echo "Usage: $0 <embodiment_tag> <model_path> [port] [command]"
+    echo "  <embodiment_tag> : Embodiment tag (required, e.g. G1_LOCO_DOWNSTREAM)"
+    echo "  <model_path>     : Model path (required)"
+    echo "  [port]           : Port (default: 22085)"
+    echo "  [command]        : run|start|stop|status|logs (default: run)"
     exit 1
 }
 
-if [ "$#" -lt 1 ]; then
+if [ "$#" -lt 2 ]; then
     usage
 fi
 
-source .venv-openpi/bin/activate
-
-task="$1"
+embodiment_tag="$1"
 model_path="$2"
-port="${3:-9000}"
+port="${3:-22085}"
 command="${4:-run}"
 
-export UV_ENV_FILE=.venv-openpi
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 
-run_dir="logs/pi05"
+run_dir="logs/gr00t"
 mkdir -p "$run_dir"
-safe_task="${task//\//_}"
-pid_file="$run_dir/${safe_task}_${port}.pid"
-log_file="$run_dir/${safe_task}_${port}.log"
+safe_tag="${embodiment_tag//\//_}"
+pid_file="$run_dir/${safe_tag}_${port}.pid"
+log_file="$run_dir/${safe_tag}_${port}.log"
 
 is_running() {
     if [ -f "$pid_file" ]; then
@@ -48,13 +45,17 @@ start_server() {
         exit 0
     fi
 
-    echo "Starting Openpi05 on GPU $CUDA_VISIBLE_DEVICES (port $port)"
+    echo "Starting GR00T on GPU $CUDA_VISIBLE_DEVICES (port $port)"
     echo "with model: $model_path"
-    nohup python src/openpi/deploy/serve_policy.py \
-        --port="$port" \
-        policy:checkpoint \
-        --policy.config="$task" \
-        --policy.dir="$model_path" \
+    echo "with embodiment: $embodiment_tag"
+    nohup python -m gr00t.deploy.gr00t_serve_simple \
+        --host 0.0.0.0 \
+        --port "$port" \
+        --device "cuda:$CUDA_VISIBLE_DEVICES" \
+        --use-sim-policy-wrapper \
+        --strict \
+        --model-path "$model_path" \
+        --embodiment-tag "$embodiment_tag" \
         >"$log_file" 2>&1 &
 
     echo $! >"$pid_file"
@@ -95,13 +96,17 @@ show_logs() {
 
 case "$command" in
 run)
-    echo "Serving Openpi05 on GPU $CUDA_VISIBLE_DEVICES"
+    echo "Serving GR00T on GPU $CUDA_VISIBLE_DEVICES"
     echo "with model: $model_path"
-    python src/openpi/deploy/serve_policy.py \
-        --port="$port" \
-        policy:checkpoint \
-        --policy.config="$task" \
-        --policy.dir="$model_path"
+    echo "with embodiment: $embodiment_tag"
+    python -m gr00t.deploy.gr00t_serve_simple \
+        --host 0.0.0.0 \
+        --port "$port" \
+        --device "cuda:$CUDA_VISIBLE_DEVICES" \
+        --use-sim-policy-wrapper \
+        --strict \
+        --model-path "$model_path" \
+        --embodiment-tag "$embodiment_tag"
     ;;
 start)
     start_server

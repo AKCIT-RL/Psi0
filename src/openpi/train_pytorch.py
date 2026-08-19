@@ -103,9 +103,11 @@ def setup_ddp():
     local_rank = int(os.environ.get("LOCAL_RANK", os.environ.get("RANK", "0")))
     if use_ddp and not torch.distributed.is_initialized():
         backend = "nccl" if torch.cuda.is_available() else "gloo"
-        
-        os.environ['NCCL_BLOCKING_WAIT'] = '0'  # not to enforce timeout
-        os.environ['TORCH_NCCL_BLOCKING_WAIT'] = '0'
+
+        os.environ["TORCH_NCCL_BLOCKING_WAIT"] = os.environ.get("TORCH_NCCL_BLOCKING_WAIT", "0")
+        os.environ["TORCH_NCCL_ASYNC_ERROR_HANDLING"] = os.environ.get(
+            "TORCH_NCCL_ASYNC_ERROR_HANDLING", "1"
+        )
 
         torch.distributed.init_process_group(backend=backend, init_method="env://",
                                              timeout=timedelta(seconds=7200000), # was 1800000
@@ -450,10 +452,18 @@ def train_loop(config: _config.TrainConfig):
 
     model = openpi.models_pytorch.pi0_pytorch.PI0Pytorch(model_cfg).to(device)
 
+    gc_env = os.environ.get("OPENPI_GRAD_CHECKPOINTING", "1").strip().lower()
+    want_gradient_checkpointing = gc_env not in {"0", "false", "no", "off"}
     if hasattr(model, "gradient_checkpointing_enable"):
-        enable_gradient_checkpointing = True
-        model.gradient_checkpointing_enable()
-        logging.info("Enabled gradient checkpointing for memory optimization")
+        if want_gradient_checkpointing:
+            enable_gradient_checkpointing = True
+            model.gradient_checkpointing_enable()
+            logging.info("Enabled gradient checkpointing for memory optimization")
+        else:
+            enable_gradient_checkpointing = False
+            if hasattr(model, "gradient_checkpointing_disable"):
+                model.gradient_checkpointing_disable()
+            logging.info("Gradient checkpointing disabled by OPENPI_GRAD_CHECKPOINTING")
     else:
         enable_gradient_checkpointing = False
         logging.info("Gradient checkpointing is not supported for this model")
@@ -470,15 +480,6 @@ def train_loop(config: _config.TrainConfig):
         # Set memory allocation configuration
         os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128,expandable_segments:True"
         logging.info("Enabled memory optimizations for 8+ GPU training")
-
-    if use_ddp:
-        model = torch.nn.parallel.DistributedDataParallel(
-            model,
-            device_ids=[device.index] if device.type == "cuda" else None,
-            find_unused_parameters=True,  # Disable for memory efficiency
-            gradient_as_bucket_view=True,  # Enable for memory efficiency
-            static_graph=world_size >= 8,  # Enable for 8+ GPUs
-        )
 
     # Load weights from weight_loader if specified (for fine-tuning)
     if config.pytorch_weight_path is not None:
@@ -510,8 +511,7 @@ def train_loop(config: _config.TrainConfig):
         state_dict["paligemma_with_expert.paligemma.model.language_model.embed_tokens.weight"] = \
             state_dict["paligemma_with_expert.paligemma.lm_head.weight"]
 
-        _model = model.module if isinstance(model, torch.nn.parallel.DistributedDataParallel) else model
-        missing_keys, unexpected_keys = _model.load_state_dict(state_dict, strict=False)
+        missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
         # missing_keys, unexpected_keys = safetensors.torch.load_model(
         #     (model.module if isinstance(model, torch.nn.parallel.DistributedDataParallel) else model), model_path, strict=False
         # )
@@ -531,6 +531,10 @@ def train_loop(config: _config.TrainConfig):
 
     trainables = {}
     for k,v in model.named_parameters():
+        # Always skip lm_head. It is not part of the loss path for this training setup.
+        if "paligemma_with_expert.gemma_expert.lm_head.weight" in k:
+            continue
+
         # freeze language parts
         # if not "paligemma.model.language_model." in k:
 
@@ -544,10 +548,6 @@ def train_loop(config: _config.TrainConfig):
         if not ".paligemma.model." in k:
             trainables[k] = v
 
-        # always skip lm_head
-        if "paligemma_with_expert.gemma_expert.lm_head.weight" in k:
-            continue
-
         # # full finetune
         # trainables[k] = v
 
@@ -557,6 +557,16 @@ def train_loop(config: _config.TrainConfig):
             p.requires_grad = False
 
     print(f"number of trainable params: {countp(trainables):,} out of {sum(p.numel() for p in model.parameters()):,}")
+
+    if use_ddp:
+        model = torch.nn.parallel.DistributedDataParallel(
+            model,
+            device_ids=[device.index] if device.type == "cuda" else None,
+            find_unused_parameters=False,
+            gradient_as_bucket_view=True,  # Enable for memory efficiency
+            broadcast_buffers=False,
+            static_graph=True,
+        )
 
     # Create optimizer with config parameters
     optim = torch.optim.AdamW(
@@ -658,12 +668,6 @@ def train_loop(config: _config.TrainConfig):
             # Optimizer step
             optim.step()
             optim.zero_grad(set_to_none=True)
-
-            # Clear gradients more aggressively
-            for param in model.parameters():
-                if param.grad is not None:
-                    param.grad.detach_()
-                    param.grad = None
 
             # Collect stats
             if is_main:

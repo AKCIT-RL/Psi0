@@ -1451,7 +1451,7 @@ _CONFIGS = [
     ),
         TrainConfig(
         name="G1WholebodyLocomotionPickTotesShelfToTableTeleop",
-        project_name="psi",
+        project_name="AKCITWMOPOC",
         num_workers=8,
         model=pi0_config.Pi0Config(
             pi05=True,
@@ -1464,12 +1464,12 @@ _CONFIGS = [
             base_config=DataConfig(prompt_from_task=True),
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_droid/params"),
-        num_train_steps=40_000,
-        batch_size=128,
+        num_train_steps=50_000,
+        batch_size=32,
         lr_schedule=_optimizer.CosineDecaySchedule(
             warmup_steps=1_000,
-            peak_lr=1e-4,
-            decay_steps=40_000,
+            peak_lr=2.5e-5,
+            decay_steps=50_000,
             decay_lr=1e-8,
         ),
         pytorch_weight_path=f"{os.environ['PSI_HOME']}/cache/checkpoints/openpi/pi05_droid",
@@ -1478,8 +1478,8 @@ _CONFIGS = [
     ),
         TrainConfig(
         name="G1PickUpToteFromShelfToDeskPsi0",
-        project_name="psi",
-        num_workers=8,
+        project_name="AKCITWMOPOC",
+        num_workers=4,
         model=pi0_config.Pi0Config(
             pi05=True,
             action_dim=36,
@@ -1491,12 +1491,12 @@ _CONFIGS = [
             base_config=DataConfig(prompt_from_task=True),
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_droid/params"),
-        num_train_steps=40_000,
-        batch_size=128,
+        num_train_steps=50_000,
+        batch_size=32,
         lr_schedule=_optimizer.CosineDecaySchedule(
             warmup_steps=1_000,
-            peak_lr=1e-4,
-            decay_steps=40_000,
+            peak_lr=2.5e-5,
+            decay_steps=50_000,
             decay_lr=1e-8,
         ),
         pytorch_weight_path=f"{os.environ['PSI_HOME']}/cache/checkpoints/openpi/pi05_droid",
