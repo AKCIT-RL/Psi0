@@ -125,11 +125,15 @@ apptainer exec --nv --cleanenv \
     --env EARLY_STOPPING_PATIENCE="$EARLY_STOPPING_PATIENCE" \
     --env EARLY_STOPPING_MIN_STEPS="$EARLY_STOPPING_MIN_STEPS" \
     --env EARLY_STOPPING_METRIC="$EARLY_STOPPING_METRIC" \
+    --env WANDB_ENTITY_OVERRIDE="${WANDB_ENTITY_OVERRIDE:-}" \
+    --env WANDB_PROJECT_OVERRIDE="${WANDB_PROJECT_OVERRIDE:-}" \
     "$SIF_PATH" \
     bash -lc '
         set -euo pipefail
         cd /workspace
         source /workspace/.env
+        [[ -n "${WANDB_ENTITY_OVERRIDE:-}" ]] && export WANDB_ENTITY="$WANDB_ENTITY_OVERRIDE"
+        [[ -n "${WANDB_PROJECT_OVERRIDE:-}" ]] && export WANDB_PROJECT="$WANDB_PROJECT_OVERRIDE"
         [[ -n "${WANDB_API_KEY:-}" ]] || { echo "ERROR: WANDB_API_KEY is not configured" >&2; exit 1; }
         [[ -n "${WANDB_ENTITY:-}" ]] || { echo "ERROR: WANDB_ENTITY is not configured" >&2; exit 1; }
         [[ -n "${WANDB_PROJECT:-}" ]] || { echo "ERROR: WANDB_PROJECT is not configured" >&2; exit 1; }

@@ -13,9 +13,9 @@ set -euo pipefail
 PROJECT_DIR="${PROJECT_DIR:-${SLURM_SUBMIT_DIR:-$(pwd)}}"
 SIF_PATH="${SIF_PATH:-$PROJECT_DIR/containers/industrial_humanoids_psi0-train.gr00t_devel.sif}"
 ENV_FILE="${ENV_FILE:-$PROJECT_DIR/secrets/psi0.env}"
-DATASET_REPO_ID="AKCITWMOPOC/G1PickUpToteFromShelfToDeskPsi0"
-DATASET_REVISION="40ae4f97d1ba9422769a6a220547df7ae70e6761"
-DATASET_NAME="G1PickUpToteFromShelfToDesk-psi0"
+DATASET_REPO_ID="${DATASET_REPO_ID:-AKCITWMOPOC/G1PickUpToteFromShelfToDeskPsi0}"
+DATASET_REVISION="${DATASET_REVISION:-40ae4f97d1ba9422769a6a220547df7ae70e6761}"
+DATASET_NAME="${DATASET_NAME:-G1PickUpToteFromShelfToDesk-psi0}"
 
 DATA_ROOT="$PROJECT_DIR/data"
 STAGE_DIR="$DATA_ROOT/.staging-$DATASET_NAME"
@@ -52,7 +52,8 @@ apptainer exec --cleanenv \
         # completeness guard: info.json alone is not enough (a failed run can
         # leave partial meta); require one video per episode before skipping
         expected=$(python -c "import json;print(json.load(open(\"$dataset_dir/meta/info.json\"))[\"total_episodes\"])" 2>/dev/null || echo -1)
-        actual=$(find "$dataset_dir/videos" -name "*.mp4" 2>/dev/null | wc -l)
+        # (find || true): fresh download has no videos/ yet and pipefail would abort
+        actual=$( (find "$dataset_dir/videos" -name "*.mp4" 2>/dev/null || true) | wc -l)
         if [[ "$actual" != "$expected" ]]; then
             # repo stores data/, meta/, videos/ at root (no remote subdir);
             # single --include: repeated flags override each other in hf cli
