@@ -65,6 +65,9 @@ class AssetsConfig:
 class DataConfig:
     # LeRobot repo id. If None, fake data will be created.
     repo_id: str | None = None
+    # Optional list of LeRobot repo ids/paths for multi-dataset training.
+    # When set, the data loader concatenates all listed datasets.
+    repo_ids: Sequence[str] | None = None
     # Directory within the assets directory containing the data assets.
     asset_id: str | None = None
     # Contains precomputed normalization stats. If None, normalization will not be performed.
@@ -454,6 +457,61 @@ class LeRobotHFMDataConfig(DataConfigFactory):
 
         return dataclasses.replace(
             self.create_base_config(assets_dirs, model_config),
+            repack_transforms=repack_transform,
+            data_transforms=data_transforms,
+            model_transforms=model_transforms,
+        )
+
+
+@dataclasses.dataclass(frozen=True)
+class MultiLeRobotHFMDataConfig(LeRobotHFMDataConfig):
+    """HFM data config that mixes multiple LeRobot datasets in a single run."""
+
+    # Override required single repo_id from DataConfigFactory for tyro CLI.
+    repo_id: tyro.conf.Suppress[str] = ""
+    # List of LeRobot dataset repo ids/paths to be mixed during training.
+    repo_ids: Sequence[str] = dataclasses.field(default_factory=tuple)
+    # Optional dataset id/path to source normalization stats from. If omitted,
+    # the same norm-stats behavior as the base config is used.
+    norm_stats_repo_id: str | None = None
+
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        if not self.repo_ids:
+            raise ValueError("MultiLeRobotHFMDataConfig requires at least one value in repo_ids.")
+
+        primary_repo_id = self.repo_ids[0]
+        norm_stats_asset_id = self.norm_stats_repo_id or self.assets.asset_id or primary_repo_id
+
+        base_config = dataclasses.replace(
+            self.base_config or DataConfig(),
+            repo_id=primary_repo_id,
+            repo_ids=tuple(self.repo_ids),
+            asset_id=norm_stats_asset_id,
+            norm_stats=self._load_norm_stats(epath.Path(self.assets.assets_dir or assets_dirs), norm_stats_asset_id),
+            use_quantile_norm=model_config.model_type != ModelType.PI0,
+        )
+
+        repack_transform = _transforms.Group(
+            inputs=[
+                _transforms.RepackTransform(
+                    {
+                        "observation/image": "observation.images.egocentric",
+                        "states": "states",
+                        "actions": "action",
+                        "prompt": "task",
+                    }
+                )
+            ]
+        )
+        data_transforms = _transforms.Group(
+            inputs=[psi_policy.HfmInputs(model_type=model_config.model_type)],
+            outputs=[psi_policy.HfmOutputs()],
+        )
+        model_transforms = ModelTransformFactory()(model_config)
+
+        return dataclasses.replace(
+            base_config,
             repack_transforms=repack_transform,
             data_transforms=data_transforms,
             model_transforms=model_transforms,
@@ -1503,6 +1561,69 @@ _CONFIGS = [
         policy_metadata={"dataset": "G1PickUpToteFromShelfToDeskPsi0"},
         checkpoint_base_dir=f".runs/openpi-05"
     ),
+
+
+
+
+    TrainConfig(
+        name="G1WB_PickToteShelfToTable_LHRTPsi0",
+        project_name="AKCITWMOPOC",
+        num_workers=8,
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_dim=36,
+            action_horizon=30,
+            max_token_len=250,
+        ),
+        data=LeRobotHFMDataConfig(
+            repo_id=f"{os.environ['PSI_HOME']}/data/AKCITWMOPOC/G1WB_PickToteShelfToTable_LHRTPsi0",
+            base_config=DataConfig(prompt_from_task=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_droid/params"),
+        num_train_steps=50_000,
+        batch_size=16,
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=1_000,
+            peak_lr=1e-4,
+            decay_steps=50_000,
+            decay_lr=1e-8,
+        ),
+        pytorch_weight_path=f"{os.environ['PSI_HOME']}/cache/checkpoints/openpi/pi05_droid",
+        policy_metadata={"dataset": "G1WB_PickToteShelfToTable_LHRTPsi0"},
+        checkpoint_base_dir=f".runs/openpi-05"
+    ),
+
+    TrainConfig(
+        name="G1WB_PickToteShelfToTableBothHands_Psi0",
+        project_name="AKCITWMOPOC",
+        num_workers=8,
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_dim=36,
+            action_horizon=30,
+            max_token_len=250,
+        ),
+        data=MultiLeRobotHFMDataConfig(
+        repo_ids=[
+            f"{os.environ['PSI_HOME']}/data/AKCITWMOPOC/G1PickUpToteFromShelfToDeskPsi0",
+            f"{os.environ['PSI_HOME']}/data/AKCITWMOPOC/G1WB_PickToteShelfToTable_LHRTPsi0",
+        ],
+            base_config=DataConfig(prompt_from_task=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_droid/params"),
+        num_train_steps=50_000,
+        batch_size=16,
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=1_000,
+            peak_lr=1e-4,
+            decay_steps=50_000,
+            decay_lr=1e-8,
+        ),
+        pytorch_weight_path=f"{os.environ['PSI_HOME']}/cache/checkpoints/openpi/pi05_droid",
+        policy_metadata={"dataset": "G1WB_PickToteShelfToTable_LHRTPsi0"},
+        checkpoint_base_dir=f".runs/openpi-05"
+    ),
+
     #
     # ALOHA Sim configs. This config is used to demonstrate how to train on a simple simulated environment.
     #

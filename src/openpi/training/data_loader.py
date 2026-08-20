@@ -1,7 +1,9 @@
 from collections.abc import Iterator, Sequence
+import json
 import logging
 import multiprocessing
 import os
+import pathlib
 import typing
 from typing import Literal, Protocol, SupportsIndex, TypeVar
 
@@ -9,6 +11,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import torch
+from torch.utils.data import ConcatDataset
 
 import openpi.models.model as _model
 import openpi.training.config as _config
@@ -131,13 +134,78 @@ def create_torch_dataset(
     data_config: _config.DataConfig, action_horizon: int, model_config: _model.BaseModelConfig
 ) -> Dataset:
     """Create a dataset for training."""
+    repo_ids = tuple(data_config.repo_ids or ())
+    if repo_ids:
+        datasets = [_create_lerobot_dataset(repo_id, data_config, action_horizon, model_config) for repo_id in repo_ids]
+        if len(datasets) == 1:
+            return typing.cast(Dataset, datasets[0])
+        return typing.cast(Dataset, ConcatDataset(datasets))
+
     repo_id = data_config.repo_id
     if repo_id is None:
         raise ValueError("Repo ID is not set. Cannot create dataset.")
     if repo_id == "fake":
         return FakeDataset(model_config, num_samples=1024)
+    return _create_lerobot_dataset(repo_id, data_config, action_horizon, model_config)
 
-    print('TESTING: repo_id: ', repo_id)
+
+def _validate_local_lerobot_dataset(repo_id: str, model_config: _model.BaseModelConfig) -> None:
+    """Validate local LeRobot dataset layout early so bad paths fail fast."""
+    repo_path = pathlib.Path(repo_id).expanduser()
+    if not repo_path.is_absolute() and not str(repo_path).startswith("."):
+        return
+
+    required_paths = [
+        repo_path / "data",
+        repo_path / "meta",
+        repo_path / "meta" / "info.json",
+    ]
+    missing_paths = [str(path) for path in required_paths if not path.exists()]
+    if missing_paths:
+        raise ValueError(
+            f"Local dataset path '{repo_id}' is incomplete. Missing required paths: {missing_paths}"
+        )
+
+    modality_path = repo_path / "meta" / "modality.json"
+    if not modality_path.exists():
+        return
+
+    try:
+        with modality_path.open("r", encoding="utf-8") as f:
+            modality = json.load(f)
+    except Exception as exc:
+        raise ValueError(f"Failed to parse modality metadata at '{modality_path}': {exc}") from exc
+
+    action_spec = modality.get("action")
+    if not isinstance(action_spec, dict):
+        return
+
+    max_action_end = None
+    for entry in action_spec.values():
+        if isinstance(entry, dict) and isinstance(entry.get("end"), int):
+            end = entry["end"]
+            max_action_end = end if max_action_end is None else max(max_action_end, end)
+
+    if max_action_end is None:
+        return
+
+    if max_action_end != model_config.action_dim:
+        raise ValueError(
+            "Dataset/model action dimension mismatch for "
+            f"'{repo_id}': modality action dim={max_action_end}, model action_dim={model_config.action_dim}."
+        )
+
+
+def _create_lerobot_dataset(
+    repo_id: str,
+    data_config: _config.DataConfig,
+    action_horizon: int,
+    model_config: _model.BaseModelConfig,
+) -> Dataset:
+    if repo_id == "fake":
+        raise ValueError("'fake' cannot be used inside repo_ids for multi-dataset training.")
+
+    _validate_local_lerobot_dataset(repo_id, model_config)
     dataset_meta = LeRobotDatasetMetadata(repo_id)
     dataset = LeRobotDataset(
         repo_id,
