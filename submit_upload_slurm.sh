@@ -5,8 +5,12 @@
 # CPU only, on purpose: uploading ~21 GB takes long enough that holding a GPU for it
 # would waste more machine time than the training itself.
 #
-# Usage:
-#   sbatch --export=ALL,RUN_NAME=gr00t_n1d7_finetune_output_close_door submit_upload_slurm.sh
+# Usage (pass --partition: this cluster has no default one, and sbatch refuses without it):
+#   sbatch --partition h100n2 --export=ALL,RUN_NAME=gr00t_n1d7_finetune_output_close_door \
+#          submit_upload_slurm.sh
+#
+# It needs no GPU and no container, so it can also just be run on the host:
+#   RUN_NAME=... ./submit_upload_slurm.sh
 #
 # Chained after a training job (the normal path — run_pipeline.sh does this for you):
 #   sbatch --dependency=afterok:<train_job_id> --export=ALL,RUN_NAME=... submit_upload_slurm.sh

@@ -113,7 +113,7 @@ if __name__ == "__main__":
     config.training.eval_strategy = ft_config.eval_strategy
     config.training.eval_steps = ft_config.eval_steps
     config.training.eval_set_split_ratio = ft_config.val_split
-    config.training.wandb_project = "finetune-gr00t-n1d7"
+    config.training.wandb_project = os.environ.get("WANDB_PROJECT", "finetune-gr00t-n1d7")
 
     config.data.shard_size = ft_config.shard_size
     config.data.episode_sampling_rate = ft_config.episode_sampling_rate

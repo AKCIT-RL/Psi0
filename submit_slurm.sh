@@ -8,8 +8,17 @@
 # Pick the dataset (a directory name under data/simple/simple-converted/):
 #   sbatch --export=ALL,DATASET_NAME=G1WholebodyCloseDoorTeleop-v0 submit_slurm.sh
 #
+# Train on several datasets at once by joining them with '+'. They are mixed, each weighted
+# by its own length, so a bigger dataset is sampled more — the same distribution a physically
+# merged dataset would give. RUN_NAME is then required (see the gate below). Use '+', not a
+# comma: sbatch --export splits on commas and would drop every dataset after the first.
+#   sbatch --export=ALL,DATASET_NAME=DatasetA+DatasetB,RUN_NAME=my_mix submit_slurm.sh
+#
 # The run directory defaults to checkpoints/gr00t_n1d7_finetune_output_<slug>, where
 # <slug> comes from scripts/prepare_simple_datasets.py; override with RUN_NAME.
+#
+# Other knobs: NUM_GPUS (default 1, must match --gres), GLOBAL_BATCH_SIZE (16),
+# GRADIENT_CHECKPOINTING (1; set 0 to trade VRAM for speed on H100/B200).
 #
 # Override resources at submission time, e.g.:
 #   sbatch --gres=gpu:4 --time=72:00:00 submit_slurm.sh
@@ -49,8 +58,46 @@ ENV_FILE="${ENV_FILE:-${PROJECT_DIR}/.env}"
 # Dataset directory name under data/simple/simple-converted/ — produced and validated by
 # scripts/prepare_simple_datasets.py. Kept as a name, not a path, so the run name can be
 # derived from it and the container path stays fixed.
+#
+# Accepts a comma-separated list to train on several datasets at once. The launcher already
+# splits --dataset-path on commas and builds one mixture out of them, weighting each by its
+# own length — the same sampling a physically merged dataset would give, without copying
+# data or rewriting metadata. A single name still behaves exactly as before.
+#
+# Separator: '+' or ','. Prefer '+' — sbatch --export splits its own argument on commas and
+# silently drops everything after the first one, so DATASET_NAME=A,B inside --export arrives
+# as just "A": a mixture run that quietly trains on one dataset. Quoting does not help. A
+# comma only survives when the variable is exported before sbatch (with --export=ALL).
 DATASET_NAME="${DATASET_NAME:-G1WholebodyOpenOvenTeleop-v0}"
-DATASET_HOST_PATH="${PROJECT_DIR}/data/simple/simple-converted/${DATASET_NAME}"
+IFS=',' read -r -a DATASET_NAMES <<< "${DATASET_NAME//+/,}"
+DATASET_HOST_PATH="${PROJECT_DIR}/data/simple/simple-converted/${DATASET_NAMES[0]}"
+
+# Defaults calibrated for L40S (46 GB) — H100 (80 GB) has room for a bigger batch.
+GLOBAL_BATCH_SIZE="${GLOBAL_BATCH_SIZE:-16}"
+
+# One knob for both torchrun's --nproc_per_node (how many processes actually start) and the
+# launcher's --num-gpus (which only divides the global batch and decides whether DeepSpeed
+# is used). They must agree: if --num-gpus says 2 while a single process runs, the per-device
+# batch is silently halved and DeepSpeed is switched on for a job that is not distributed.
+NUM_GPUS="${NUM_GPUS:-1}"
+
+# Trades VRAM for time by recomputing activations in the backward pass. On by default because
+# the defaults here were calibrated for L40S (46 GB); on H100/B200 measure with 0 before
+# assuming it is still needed.
+GRADIENT_CHECKPOINTING="${GRADIENT_CHECKPOINTING:-1}"
+
+# A multi-dataset run has no single dataset to name itself after. Deriving the slug from the
+# first one would send the run into the checkpoint directory of that dataset's solo run — and
+# the trainer would resume from the checkpoint sitting there, silently continuing a different
+# experiment and publishing it to the same HF branch. Nothing downstream would flag it, so
+# refuse here and make the caller name the run.
+if [ "${#DATASET_NAMES[@]}" -gt 1 ] && [ -z "${RUN_NAME:-}" ]; then
+    echo "ERROR: training on ${#DATASET_NAMES[@]} datasets requires an explicit RUN_NAME."
+    echo "       Without one the run would inherit ${DATASET_NAMES[0]}'s output directory"
+    echo "       and resume from its checkpoint. Pick a name that says what the mix is, e.g.:"
+    echo "         RUN_NAME=gr00t_n1d7_finetune_output_tote_shelf_desk_plus_table"
+    exit 1
+fi
 
 # Run slug: taken from the dataset's PROVENANCE.json when present (single source of truth
 # with the prepare script), otherwise from RUN_NAME, otherwise lower-cased dataset name.
@@ -67,10 +114,10 @@ if [ -z "${RUN_NAME:-}" ]; then
         # instead of resuming the run that is already there.
         RUN_SLUG=$("${PROJECT_DIR}/src/gr00t/.venv-gr00t/bin/python" \
                    "${PROJECT_DIR}/scripts/prepare_simple_datasets.py" \
-                   --print-run-slug "${DATASET_NAME}" 2>/dev/null || true)
+                   --print-run-slug "${DATASET_NAMES[0]}" 2>/dev/null || true)
     fi
     if [ -z "${RUN_SLUG}" ]; then
-        RUN_SLUG=$(echo "${DATASET_NAME}" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '_' \
+        RUN_SLUG=$(echo "${DATASET_NAMES[0]}" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '_' \
                    | sed 's/__*/_/g; s/^_//; s/_$//')
     fi
     RUN_NAME="gr00t_n1d7_finetune_output_${RUN_SLUG}"
@@ -152,7 +199,14 @@ echo "Node:         ${SLURM_NODELIST:-<local>}"
 echo "Start time:   $(date)"
 echo "PROJECT_DIR:  ${PROJECT_DIR}"
 echo "SIF_PATH:     ${SIF_PATH}"
-echo "DATASET:      ${DATASET_NAME}"
+if [ "${#DATASET_NAMES[@]}" -gt 1 ]; then
+    echo "DATASETS:     ${#DATASET_NAMES[@]} (mixture, weighted by length)"
+    for _name in "${DATASET_NAMES[@]}"; do
+        echo "              - ${_name}"
+    done
+else
+    echo "DATASET:      ${DATASET_NAME}"
+fi
 echo "RUN_NAME:     ${RUN_NAME}"
 echo "MASTER_PORT:  ${MASTER_PORT}"
 echo "=================================================="
@@ -164,19 +218,45 @@ fi
 
 # Fail before allocating hours of GPU rather than after: a missing modality.json means
 # the dataset was never validated, and training on it produces a model that looks fine
-# and is unusable (see docs/runbook_modality.md).
-if [ ! -d "${DATASET_HOST_PATH}" ]; then
-    echo "ERROR: dataset not found: ${DATASET_HOST_PATH}"
-    echo "       run: scripts/prepare_simple_datasets.py --only ${DATASET_NAME}"
-    exit 1
-fi
-if [ ! -f "${DATASET_HOST_PATH}/meta/modality.json" ]; then
-    echo "ERROR: ${DATASET_HOST_PATH}/meta/modality.json is missing — dataset not prepared"
-    exit 1
-fi
-if [ ! -f "${DATASET_HOST_PATH}/PROVENANCE.json" ]; then
-    echo "WARNING: no PROVENANCE.json — this dataset was not produced by"
-    echo "         scripts/prepare_simple_datasets.py, so it may never have been validated."
+# and is unusable (see docs/runbook_modality.md). Every dataset in the mix gets checked —
+# validating only the first would leave exactly the gap these gates exist to close.
+for _name in "${DATASET_NAMES[@]}"; do
+    _path="${PROJECT_DIR}/data/simple/simple-converted/${_name}"
+    if [ ! -d "${_path}" ]; then
+        echo "ERROR: dataset not found: ${_path}"
+        echo "       run: scripts/prepare_simple_datasets.py --only ${_name}"
+        exit 1
+    fi
+    if [ ! -f "${_path}/meta/modality.json" ]; then
+        echo "ERROR: ${_path}/meta/modality.json is missing — dataset not prepared"
+        exit 1
+    fi
+    if [ ! -f "${_path}/PROVENANCE.json" ]; then
+        echo "WARNING: ${_name} has no PROVENANCE.json — it was not produced by"
+        echo "         scripts/prepare_simple_datasets.py, so it may never have been validated."
+    fi
+done
+
+# The mixture applies ONE modality config to every dataset in it (see factory.py: the
+# embodiment tag selects a single modality_configs entry, reused for each path). Datasets
+# that disagree on what a slice of the state/action vector means would train the model on
+# contradictory semantics — loss still falls, and the policy is useless on the robot. The
+# single-dataset path could never hit this, so the gate belongs here.
+if [ "${#DATASET_NAMES[@]}" -gt 1 ]; then
+    _ref="${PROJECT_DIR}/data/simple/simple-converted/${DATASET_NAMES[0]}/meta/modality.json"
+    for _name in "${DATASET_NAMES[@]:1}"; do
+        _other="${PROJECT_DIR}/data/simple/simple-converted/${_name}/meta/modality.json"
+        if ! python3 -c "
+import json, sys
+sys.exit(0 if json.load(open(sys.argv[1])) == json.load(open(sys.argv[2])) else 1)
+" "${_ref}" "${_other}"; then
+            echo "ERROR: ${_name}'s modality.json differs from ${DATASET_NAMES[0]}'s."
+            echo "       One modality config is applied to the whole mixture, so mixing these"
+            echo "       trains on contradictory state/action layouts. Do not hand-edit either"
+            echo "       file — regenerate and validate them (docs/runbook_modality.md)."
+            exit 1
+        fi
+    done
 fi
 
 ########################
@@ -232,9 +312,13 @@ apptainer exec \
     --bind "${PROJECT_DIR}/cache/wandb:/workspace/cache/wandb" \
     --env DATASET_NAME="${DATASET_NAME}" \
     --env RUN_NAME="${RUN_NAME}" \
+    --env GLOBAL_BATCH_SIZE="${GLOBAL_BATCH_SIZE}" \
+    --env NUM_GPUS="${NUM_GPUS}" \
+    --env GRADIENT_CHECKPOINTING="${GRADIENT_CHECKPOINTING}" \
     --env MASTER_PORT="${MASTER_PORT}" \
     --env WANDB_API_KEY="${WANDB_API_KEY:-}" \
     --env WANDB_ENTITY="${WANDB_ENTITY:-industrial_humanoids}" \
+    --env WANDB_PROJECT="${WANDB_PROJECT:-finetune-gr00t-n1d7}" \
     --env HF_TOKEN="${HF_TOKEN:-}" \
     --env HF_HOME="/workspace/cache/huggingface" \
     --env TORCH_HOME="/workspace/cache/torch" \
@@ -256,14 +340,46 @@ apptainer exec \
         echo "CUDA devices: ${CUDA_VISIBLE_DEVICES:-all}"
         echo ""
 
-        export DATASET_PATH="/workspace/data/simple/simple-converted/${DATASET_NAME}"
-        export CUDA_VISIBLE_DEVICES="0"
-        echo "Dataset: $DATASET_PATH"
+        # DATASET_NAME may hold a list separated by + or , (see the note where it is parsed on
+        # the host). Rewrite each name as a container path and hand the whole list to
+        # --dataset-path, which splits on commas itself.
+        DATASET_PATH=""
+        IFS="," read -r -a _names <<< "${DATASET_NAME//+/,}"
+        for _n in "${_names[@]}"; do
+            DATASET_PATH="${DATASET_PATH:+${DATASET_PATH},}/workspace/data/simple/simple-converted/${_n}"
+        done
+        export DATASET_PATH
+        # Keep whatever SLURM allocated. This cluster runs task/affinity without task/cgroup,
+        # so every GPU stays visible to the job and a hardcoded "0" does not mean "the first
+        # GPU I was given" — it means physical GPU 0, stealing it from whoever holds it while
+        # the allocated one idles. Only fall back to 0 when running outside SLURM.
+        export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
+        for _n in "${_names[@]}"; do
+            echo "Dataset: /workspace/data/simple/simple-converted/${_n}"
+        done
         echo "Output:  /workspace/checkpoints/${RUN_NAME}"
+        echo "GPUs:    ${NUM_GPUS} (devices ${CUDA_VISIBLE_DEVICES})"
         echo ""
 
+        # Asking torchrun for more processes than there are visible GPUs fails deep inside
+        # NCCL with an error that does not name the cause. Refuse here instead, while the
+        # mismatch between --gres and NUM_GPUS is still obvious.
+        visible_gpus=$(echo "${CUDA_VISIBLE_DEVICES}" | tr ',' '\n' | grep -c .)
+        if [ "${NUM_GPUS}" -gt "${visible_gpus}" ]; then
+            echo "[ERROR] NUM_GPUS=${NUM_GPUS} but only ${visible_gpus} GPU(s) allocated (${CUDA_VISIBLE_DEVICES})."
+            echo "        Request them from SLURM too, e.g. --gres gpu:${NUM_GPUS}"
+            exit 1
+        fi
+
+        # tyro exposes the bool as a flag pair, so the off switch has to be explicit.
+        if [ "${GRADIENT_CHECKPOINTING}" = "1" ]; then
+            gc_flag="--gradient-checkpointing"
+        else
+            gc_flag="--no-gradient-checkpointing"
+        fi
+
         $python_bin -m torch.distributed.run \
-            --nproc_per_node 1 \
+            --nproc_per_node "${NUM_GPUS}" \
             --master_port "${MASTER_PORT}" \
             /workspace/baselines/gr00t-n1.7/launch_finetune_n1d7_inner.py \
             --base-model-path /workspace/checkpoints/GR00T-N1.7-3B \
@@ -275,15 +391,15 @@ apptainer exec \
             --warmup-ratio 0.05 \
             --weight-decay 1e-05 \
             --learning-rate 0.0001 \
-            --global-batch-size 16 \
+            --global-batch-size "${GLOBAL_BATCH_SIZE}" \
             --gradient-accumulation-steps 2 \
             --dataloader-num-workers 16 \
             --output-dir "/workspace/checkpoints/${RUN_NAME}" \
             --eval-strategy no \
-            --num-gpus 1 \
+            --num-gpus "${NUM_GPUS}" \
             --color-jitter-params brightness 0.3 contrast 0.4 saturation 0.5 hue 0.08 \
             --modality-config-path src/gr00t/gr00t/configs/modality/g1_locomanip_n1d7.py \
-            --gradient-checkpointing \
+            "$gc_flag" \
             --use-wandb
     '
 TRAIN_STATUS=$?
@@ -308,7 +424,18 @@ echo "=================================================="
 # not drag the rest of the queue along.
 if [ "${PIPELINE_ADVANCE:-0}" = "1" ] || [ "${PIPELINE_UPLOAD:-0}" = "1" ]; then
     if [ "${TRAIN_STATUS}" -eq 0 ]; then
+        # A partition given on the training job's command line does not reach this nested
+        # sbatch, and submit_upload_slurm.sh carries no #SBATCH --partition. On a cluster
+        # with no default partition that made every upload fail *after* a successful run —
+        # loudly in the log, but hours after anyone was watching. Inherit this job's own
+        # partition; the upload is CPU-only, so it costs the partition nothing but CPUs.
+        upload_partition=("${UPLOAD_PARTITION:-${SLURM_JOB_PARTITION:-}}")
+        partition_arg=()
+        if [ -n "${upload_partition[0]}" ]; then
+            partition_arg=(--partition "${upload_partition[0]}")
+        fi
         upload_id=$(sbatch --parsable \
+            "${partition_arg[@]}" \
             --job-name "hfup-${RUN_SLUG:-${RUN_NAME#gr00t_n1d7_finetune_output_}}" \
             --export "ALL,RUN_NAME=${RUN_NAME},HF_REPO_ID=${HF_REPO_ID:-},HF_BRANCH=${HF_BRANCH:-},UPLOAD_WHAT=${UPLOAD_WHAT:-}" \
             "${PROJECT_DIR}/submit_upload_slurm.sh" 2>&1) \
