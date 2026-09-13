@@ -5,8 +5,22 @@
 # Usage:
 #   sbatch submit_slurm.sh
 #
+# NOTE: run sbatch from the repo root, and make sure logs/ exists there first
+# (`mkdir -p logs`). The --output path below is relative to the submitting directory, and
+# SLURM creates that file before this script runs, so a missing logs/ kills the job with
+# no log to explain it. logs/ is gitignored, so a fresh clone does not have it.
+#
 # Pick the dataset (a directory name under data/simple/simple-converted/):
 #   sbatch --export=ALL,DATASET_NAME=G1WholebodyCloseDoorTeleop-v0 submit_slurm.sh
+#
+# One specialist per dataset, one after another, from a single submission:
+#   sbatch --array=0-2%1 --export=ALL,DATASETS="carry_totes screwdrivers screws" submit_slurm.sh
+#
+# Start from other weights than the base model (a directory name under checkpoints/):
+#   sbatch --export=ALL,BASE_MODEL=gr00t_n1d7_finetune_output_totes_shelf_to_table_render/final,DATASET_NAME=carry_totes submit_slurm.sh
+#
+# Shorten training for a small dataset:
+#   sbatch --export=ALL,DATASET_NAME=carry_totes,MAX_STEPS=8000 submit_slurm.sh
 #
 # The run directory defaults to checkpoints/gr00t_n1d7_finetune_output_<slug>, where
 # <slug> comes from scripts/prepare_simple_datasets.py; override with RUN_NAME.
@@ -46,11 +60,49 @@ ENV_FILE="${ENV_FILE:-${PROJECT_DIR}/.env}"
 # WHAT TO TRAIN        #
 ########################
 
+# Under `sbatch --array`, the task id picks the dataset: one specialist per subtask from a
+# single submission, serialised with %1. This must run BEFORE the RUN_NAME block below,
+# which derives the run name from DATASET_NAME. Outside an array the block is inert.
+#   sbatch --array=0-2%1 --export=ALL,DATASETS="carry_totes screwdrivers screws" submit_slurm.sh
+DATASETS="${DATASETS:-}"
+if [ -n "${SLURM_ARRAY_TASK_ID:-}" ] && [ -n "${DATASETS}" ]; then
+    read -ra _DATASET_LIST <<< "${DATASETS}"
+    if [ "${SLURM_ARRAY_TASK_ID}" -ge "${#_DATASET_LIST[@]}" ]; then
+        echo "ERROR: --array index ${SLURM_ARRAY_TASK_ID} is out of range."
+        echo "       DATASETS holds ${#_DATASET_LIST[@]} entries: ${DATASETS}"
+        echo "       Use --array=0-$(( ${#_DATASET_LIST[@]} - 1 ))%1"
+        exit 1
+    fi
+    DATASET_NAME="${_DATASET_LIST[${SLURM_ARRAY_TASK_ID}]}"
+    echo "[INFO] Array task ${SLURM_ARRAY_TASK_ID}/$(( ${#_DATASET_LIST[@]} - 1 )) -> ${DATASET_NAME}"
+fi
+
 # Dataset directory name under data/simple/simple-converted/ — produced and validated by
 # scripts/prepare_simple_datasets.py. Kept as a name, not a path, so the run name can be
 # derived from it and the container path stays fixed.
 DATASET_NAME="${DATASET_NAME:-G1WholebodyOpenOvenTeleop-v0}"
 DATASET_HOST_PATH="${PROJECT_DIR}/data/simple/simple-converted/${DATASET_NAME}"
+
+# Starting weights: a directory name under checkpoints/. Kept as a name for the same reason
+# as the dataset — the host path is checkable before submitting, the container path is fixed.
+#
+# GR00T-N1.7-3B is the pristine base model and is not public. A checkpoint already
+# fine-tuned on the same embodiment works as a starting point too, e.g.
+#   BASE_MODEL=gr00t_n1d7_finetune_output_totes_shelf_to_table_render/final
+# Doing so means you are no longer fine-tuning from base: record which one a run used.
+BASE_MODEL="${BASE_MODEL:-GR00T-N1.7-3B}"
+BASE_MODEL_HOST_PATH="${PROJECT_DIR}/checkpoints/${BASE_MODEL}"
+
+# Training length. Two ways to say it:
+#   MAX_STEPS=16000       exact number of steps (the historical knob)
+#   TARGET_EPOCHS=20      passes over THIS dataset; steps are derived from its frame count
+#
+# TARGET_EPOCHS is what you want across an --array: a fixed MAX_STEPS means very different
+# amounts of training for datasets of different sizes, so the small one memorises while the
+# large one barely converges.
+MAX_STEPS="${MAX_STEPS:-50000}"
+TARGET_EPOCHS="${TARGET_EPOCHS:-}"
+GLOBAL_BATCH_SIZE="${GLOBAL_BATCH_SIZE:-16}"
 
 # Run slug: taken from the dataset's PROVENANCE.json when present (single source of truth
 # with the prepare script), otherwise from RUN_NAME, otherwise lower-cased dataset name.
@@ -179,6 +231,132 @@ if [ ! -f "${DATASET_HOST_PATH}/PROVENANCE.json" ]; then
     echo "         scripts/prepare_simple_datasets.py, so it may never have been validated."
 fi
 
+# Without this the run allocates a GPU, loads the dataset, and only then dies inside
+# launch_finetune_n1d7_inner.py's load_checkpoint_model_config().
+if [ ! -d "${BASE_MODEL_HOST_PATH}" ]; then
+    echo "ERROR: base model not found: ${BASE_MODEL_HOST_PATH}"
+    echo "       Set BASE_MODEL to a directory name under checkpoints/, e.g."
+    echo "         BASE_MODEL=gr00t_n1d7_finetune_output_totes_shelf_to_table_render/final"
+    exit 1
+fi
+if [ ! -f "${BASE_MODEL_HOST_PATH}/config.json" ]; then
+    echo "ERROR: ${BASE_MODEL_HOST_PATH}/config.json is missing."
+    echo "       --base-model-path needs a model directory, not the run directory above it."
+    exit 1
+fi
+
+########################
+# DERIVE THE SCHEDULE  #
+########################
+
+# Done on the host so the numbers land in the log before a GPU is allocated.
+TOTAL_FRAMES=""
+TOTAL_EPISODES=""
+if [ -f "${DATASET_HOST_PATH}/meta/info.json" ]; then
+    read -r TOTAL_FRAMES TOTAL_EPISODES <<<"$(python3 -c "
+import json; d = json.load(open('${DATASET_HOST_PATH}/meta/info.json'))
+print(d.get('total_frames', 0), d.get('total_episodes', 0))
+" 2>/dev/null || echo "0 0")"
+fi
+
+if [ -n "${TARGET_EPOCHS}" ]; then
+    if [ "${TOTAL_FRAMES:-0}" -le 0 ]; then
+        echo "ERROR: TARGET_EPOCHS needs total_frames from ${DATASET_HOST_PATH}/meta/info.json"
+        exit 1
+    fi
+    MAX_STEPS=$(python3 -c "print(max(500, int(${TOTAL_FRAMES} * ${TARGET_EPOCHS} / ${GLOBAL_BATCH_SIZE})))")
+fi
+
+# --save-steps was a fixed 10000. That silently produces ZERO intermediate checkpoints on
+# any run shorter than that: the job writes nothing until final/, and a crash at 9k steps
+# loses everything. Keep 10000 for long runs, scale down for short ones.
+SAVE_STEPS="${SAVE_STEPS:-$(python3 -c "print(min(10000, max(200, ${MAX_STEPS} // 5)))")}"
+
+echo ""
+echo "--- Schedule ---"
+echo "Episodes:         ${TOTAL_EPISODES:-?}"
+echo "Frames:           ${TOTAL_FRAMES:-?}"
+echo "Global batch:     ${GLOBAL_BATCH_SIZE}"
+[ -n "${TARGET_EPOCHS}" ] && echo "Target epochs:    ${TARGET_EPOCHS}"
+echo "Max steps:        ${MAX_STEPS}"
+echo "Checkpoint every: ${SAVE_STEPS}"
+if [ "${TOTAL_FRAMES:-0}" -gt 0 ]; then
+    EPOCHS_EQ=$(python3 -c "print(round(${MAX_STEPS} * ${GLOBAL_BATCH_SIZE} / ${TOTAL_FRAMES}, 1))")
+    echo "Epochs equivalent: ${EPOCHS_EQ}"
+fi
+echo ""
+
+########################
+# VENV INTERPRETER     #
+########################
+
+# The training Python is the HOST venv, reached through the src/ bind. Its bin/python is a
+# symlink to an absolute path, and that path must also exist inside the container:
+#
+#   /usr/bin/python3.10          the image has it — nothing to do
+#   /raid/.../uv/python/...      a uv-managed interpreter — must be bind-mounted at the
+#                                SAME path, or bin/python is a dangling symlink and
+#                                apptainer dies with "stat ...: no such file or directory"
+#
+# Failing here costs a queue slot on a busy cluster, so resolve it before submitting work.
+# The user's scratch area, mounted at its OWN path inside the container. This is what makes
+# host conventions survive the container boundary:
+#
+#   ~/.cache -> /raid/$USER/cache      the symlink resolves instead of dangling
+#   TRITON_CACHE_DIR=/raid/...         the variable points somewhere writable
+#   a uv-managed interpreter on /raid   the venv's bin/python symlink resolves
+#
+# Apptainer mounts $HOME, the working directory and /tmp automatically, and nothing else.
+# Everything under /raid other than this repo is a read-only shell created just to hold the
+# working-directory mountpoint — writing there fails with EROFS, and the traceback names a
+# library's cache directory rather than anything about containers.
+#
+# Path-identical is the point: a translated bind (/raid/x -> /workspace/y) fixes neither
+# symlinks nor environment variables, because both store the original path.
+SCRATCH_DIR="${SCRATCH:-/raid/${USER}}"
+SCRATCH_BIND=()
+if [ -d "${SCRATCH_DIR}" ]; then
+    SCRATCH_BIND=(--bind "${SCRATCH_DIR}:${SCRATCH_DIR}")
+    echo "[INFO] Binding ${SCRATCH_DIR} at the same path inside the container."
+else
+    echo "[WARN] ${SCRATCH_DIR} not found — not bound. Cache paths pointing there will fail."
+fi
+
+VENV_PY="${PROJECT_DIR}/src/gr00t/.venv-gr00t/bin/python"
+PY_BINDS=()
+
+# -e follows symlinks, so a dangling one reads as absent; -L separates the two cases,
+# which need different fixes.
+if [ ! -e "${VENV_PY}" ] && [ ! -L "${VENV_PY}" ]; then
+    echo "ERROR: training interpreter not found: ${VENV_PY}"
+    echo "       Create it with (must be 3.10 + cuda12, to match the image):"
+    echo "         cd src/gr00t && uv venv .venv-gr00t --python 3.10 && uv sync --active --extra cuda12"
+    exit 1
+fi
+
+VENV_PY_REAL=$(readlink -f "${VENV_PY}" 2>/dev/null || true)
+if [ -z "${VENV_PY_REAL}" ] || [ ! -e "${VENV_PY_REAL}" ]; then
+    echo "ERROR: ${VENV_PY} points at ${VENV_PY_REAL:-<unresolved>}, which does not exist."
+    echo "       The venv's base interpreter is gone. Recreate it with 3.10 + cuda12:"
+    echo "         cd src/gr00t && rm -rf .venv-gr00t"
+    echo "         uv venv .venv-gr00t --python 3.10 && uv sync --active --extra cuda12"
+    exit 1
+fi
+
+case "${VENV_PY_REAL}" in
+    /usr/*)
+        # A system interpreter. It resolves inside the container only if the image ships
+        # the same version — the image is Python 3.10, so a 3.12 venv fails here.
+        echo "[INFO] Training interpreter: ${VENV_PY_REAL} (expected to exist in the image)"
+        ;;
+    *)
+        PY_ROOT="${VENV_PY_REAL%/bin/*}"
+        PY_BINDS+=(--bind "${PY_ROOT}:${PY_ROOT}")
+        echo "[INFO] Training interpreter is managed: ${VENV_PY_REAL}"
+        echo "[INFO] Binding ${PY_ROOT} at the same path so the symlink resolves."
+        ;;
+esac
+
 ########################
 # PREPARE DIRECTORIES  #
 ########################
@@ -188,7 +366,8 @@ mkdir -p \
     "${PROJECT_DIR}/checkpoints/${RUN_NAME}" \
     "${PROJECT_DIR}/cache/huggingface" \
     "${PROJECT_DIR}/cache/torch" \
-    "${PROJECT_DIR}/cache/wandb"
+    "${PROJECT_DIR}/cache/wandb" \
+    "${PROJECT_DIR}/cache/triton"
 
 ########################
 # LOAD MODULES         #
@@ -216,28 +395,71 @@ fi
 # The exit status is needed after the run: it decides whether the upload is submitted,
 # so `set -e` must not abort here. A failed training still hands the lane on to the next
 # dataset; it just publishes nothing.
+# Apptainer injects the host's driver libraries with --nv, from a fixed list that includes
+# the OpenGL stack. When the host distro is newer than the image, those libraries need a
+# glibc the image does not have, and anything that resolves OpenGL fails to load — torchcodec
+# reaches it through ffmpeg, so video decoding dies in the dataloader with a GLIBC error that
+# names none of this.
+#
+#   NV_FLAGS="--nv --nvccli"   delegate injection to nvidia-container-cli, which brings what
+#                              CUDA needs and leaves the graphics stack out
+#   NV_FLAGS="--nv"            the default, and what a matching host/image pair wants
+read -ra NV_FLAGS <<< "${NV_FLAGS:---nv}"
+echo "[INFO] Apptainer GPU flags: ${NV_FLAGS[*]}"
+
+# --nvccli exposes GPUs through nvidia-container-cli, which reads NVIDIA_VISIBLE_DEVICES.
+# Apptainer defaults it to "all" to emulate --nv, and "all" on a shared node means every
+# GPU on the machine, including the ones SLURM allocated to other people. The device cgroup
+# usually blocks the access anyway, but relying on that is one mistake away from stepping on
+# a colleague's run. Expose exactly what SLURM granted.
+NV_ENV=()
+for f in "${NV_FLAGS[@]}"; do
+    if [ "$f" = "--nvccli" ]; then
+        _gpus="${SLURM_JOB_GPUS:-${GPU_DEVICE_ORDINAL:-${CUDA_VISIBLE_DEVICES:-}}}"
+        if [ -n "${_gpus}" ]; then
+            NV_ENV=(--env NVIDIA_VISIBLE_DEVICES="${_gpus}")
+            echo "[INFO] NVIDIA_VISIBLE_DEVICES=${_gpus} (from SLURM, not 'all')"
+        else
+            echo "[WARN] --nvccli without a SLURM GPU allocation: the container may see"
+            echo "       every GPU on the node. Do not run training this way."
+        fi
+        break
+    fi
+done
+
 TRAIN_STATUS=0
 set +e
 
 apptainer exec \
-    --nv \
+    "${NV_FLAGS[@]}" \
+    "${NV_ENV[@]}" \
     --bind "${PROJECT_DIR}/data:/workspace/data" \
     --bind "${PROJECT_DIR}/checkpoints:/workspace/checkpoints" \
     --bind "${PROJECT_DIR}/src:/workspace/src" \
     --bind "${PROJECT_DIR}/baselines:/workspace/baselines" \
     --bind "${PROJECT_DIR}/scripts:/workspace/scripts" \
     --bind "${PROJECT_DIR}/third_party:/workspace/third_party" \
-    --bind "${PROJECT_DIR}/cache/huggingface:/workspace/cache/huggingface" \
-    --bind "${PROJECT_DIR}/cache/torch:/workspace/cache/torch" \
-    --bind "${PROJECT_DIR}/cache/wandb:/workspace/cache/wandb" \
+    `# Bind the cache ROOT, not individual subdirectories: everything the container`  \
+    `# writes under /workspace/cache then lands on the host, including directories`    \
+    `# created at runtime. Binding only the known subdirs leaves /workspace/cache`     \
+    `# itself read-only, so a library inventing a new cache path still dies.`          \
+    --bind "${PROJECT_DIR}/cache:/workspace/cache" \
+    "${SCRATCH_BIND[@]}" \
+    "${PY_BINDS[@]}" \
     --env DATASET_NAME="${DATASET_NAME}" \
     --env RUN_NAME="${RUN_NAME}" \
+    --env BASE_MODEL="${BASE_MODEL}" \
+    --env MAX_STEPS="${MAX_STEPS}" \
+    --env SAVE_STEPS="${SAVE_STEPS}" \
+    --env GLOBAL_BATCH_SIZE="${GLOBAL_BATCH_SIZE}" \
     --env MASTER_PORT="${MASTER_PORT}" \
     --env WANDB_API_KEY="${WANDB_API_KEY:-}" \
     --env WANDB_ENTITY="${WANDB_ENTITY:-industrial_humanoids}" \
     --env HF_TOKEN="${HF_TOKEN:-}" \
     --env HF_HOME="/workspace/cache/huggingface" \
     --env TORCH_HOME="/workspace/cache/torch" \
+    `# Everything else cache-related is inherited from the host and resolves through the`  \
+    `# scratch bind above, so it is deliberately not overridden here.`                     \
     --env OMP_NUM_THREADS="${OMP_NUM_THREADS:-8}" \
     --env TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}" \
     --env CUDA_LAUNCH_BLOCKING="${CUDA_LAUNCH_BLOCKING:-false}" \
@@ -266,16 +488,16 @@ apptainer exec \
             --nproc_per_node 1 \
             --master_port "${MASTER_PORT}" \
             /workspace/baselines/gr00t-n1.7/launch_finetune_n1d7_inner.py \
-            --base-model-path /workspace/checkpoints/GR00T-N1.7-3B \
+            --base-model-path "/workspace/checkpoints/${BASE_MODEL}" \
             --dataset-path "$DATASET_PATH" \
             --embodiment-tag G1_LOCO_DOWNSTREAM \
-            --save-steps 10000 \
+            --save-steps "${SAVE_STEPS}" \
             --save-total-limit 1 \
-            --max-steps 50000 \
+            --max-steps "${MAX_STEPS}" \
             --warmup-ratio 0.05 \
             --weight-decay 1e-05 \
             --learning-rate 0.0001 \
-            --global-batch-size 16 \
+            --global-batch-size "${GLOBAL_BATCH_SIZE}" \
             --gradient-accumulation-steps 2 \
             --dataloader-num-workers 16 \
             --output-dir "/workspace/checkpoints/${RUN_NAME}" \
