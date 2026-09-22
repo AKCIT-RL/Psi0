@@ -1,0 +1,13 @@
+# EVAL_SPEC for ovx/slurm/eval.sbatch: line i holds the `ovx/run.sh eval` options for array task i,
+# in the same order as the DATASETS of the training array. Blank lines and comments are skipped.
+#
+# --model is a run directory under /home/ovx/checkpoints, --data-dir a LeRobot root under
+# /home/ovx/data whose
+# episodes provide the starting states. Prefer held-out episodes that were not used in training.
+#
+# CHECK BEFORE USE: the env id of each dataset (carry_totes in particular) and --sim-mode, which
+# must match the renderer the training videos came from (mujoco or mujoco_isaac).
+
+--model gr00t_n1d7_finetune_output_carry_totes   --env-id simple/G1IndustrialToteToRackTeleop-v0        --data-dir carry_totes
+--model gr00t_n1d7_finetune_output_screwdrivers  --env-id simple/G1IndustrialScrewdriverToToteTeleop-v0 --data-dir screwdrivers
+--model gr00t_n1d7_finetune_output_screws        --env-id simple/G1IndustrialScrewToToteTeleop-v0       --data-dir screws

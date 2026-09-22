@@ -1,0 +1,68 @@
+# Experimento para `ovx/run.sh train --config <este arquivo>`.
+#
+# As chaves são campos do FinetuneConfig (src/gr00t/gr00t/configs/finetune_config.py, 32 no total).
+# Elas entram DEPOIS da receita congelada, então sobrescrevem o que ela fixa; e antes do que vier
+# após `--` na linha de comando, que continua tendo a última palavra. A ordem é:
+#
+#     receita (f0a2e4e)  <  este arquivo  <  argumentos após --
+#
+# O arquivo inteiro é gravado em <run>/ovx_runs.jsonl, então o resultado sempre carrega o
+# experimento que o produziu. Sobrescrever um valor da receita (learning_rate, weight_decay,
+# warmup_ratio, color_jitter_params, gradient_checkpointing…) é anunciado no log ao iniciar:
+# aquele run deixou de ser a linha de base.
+#
+# Formatos de valor:
+#   número / texto   ->  --flag valor
+#   true             ->  --flag
+#   false            ->  --no-flag
+#   mapa             ->  --flag chave valor chave valor
+#
+# ALCANCE — leia antes de procurar uma chave que não está aqui.
+#
+# Este arquivo NÃO é injetado como objeto de configuração: cada chave vira um argumento de linha
+# de comando do launcher. Por isso o alcance é restrito aos 32 campos do FinetuneConfig, e só a
+# eles. Ficam FORA, porque o launcher os define direto no objeto Config depois do parsing:
+#
+#     optim (adamw_bnb_8bit)        start_from_checkpoint        load_bf16
+#     backbone_trainable_params_fp32        image_crop_size / image_target_size
+#     opções de deepspeed           o resto do DataConfig
+#
+# Isso é limitação e proteção ao mesmo tempo: como este arquivo não alcança esses campos, também
+# não tem como apagá-los sem querer. Uma chave inexistente (typo) faz o run falhar em segundos,
+# com "Unrecognized options", antes de qualquer treino.
+#
+# Alcançar o resto exige mudar o launcher do repositório; está adiado (guia técnico, seção 12).
+#
+# Como está, este arquivo não define nada: copie-o e descomente o que for variar.
+
+# --- otimização (a receita fixa estes) ---
+# learning_rate: 5.0e-5
+# weight_decay: 1.0e-5
+# warmup_ratio: 0.05
+# gradient_accumulation_steps: 2
+
+# --- o que treinar: as chaves que um experimento de verdade move ---
+# tune_llm: true               # backbone de linguagem; pede >= 40 GB de VRAM
+# tune_visual: true            # encoder visual
+# tune_projector: true         # padrão do modelo: true
+# tune_diffusion_model: true   # padrão do modelo: true
+# reinit_action_head: false
+# gradient_checkpointing: false   # a receita liga; false vira --no-gradient-checkpointing
+
+# --- regularização e amostragem ---
+# state_dropout_prob: 0.8
+# random_rotation_angle: 5
+# episode_sampling_rate: 0.1
+# override_pretraining_statistics: false
+
+# --- validação (a receita desliga o eval durante o treino) ---
+# eval_strategy: steps
+# eval_steps: 1000
+# val_split: 0.1
+
+# --- augmentação (mapa) ---
+# color_jitter_params:
+#   brightness: 0.3
+#   contrast: 0.4
+#   saturation: 0.5
+#   hue: 0.08

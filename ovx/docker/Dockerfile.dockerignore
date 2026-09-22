@@ -1,0 +1,42 @@
+# Build context for ovx/docker/Dockerfile (BuildKit reads <Dockerfile>.dockerignore next to it,
+# so this does not affect the other Dockerfiles, which use the root .dockerignore).
+#
+# Allowlist: exclude everything, then re-include exactly what the image copies. Datasets,
+# checkpoints, caches and venvs never enter the context.
+
+*
+
+!ovx/docker/gr00t/pyproject.toml
+!ovx/docker/gr00t/uv.lock
+!ovx/bin/
+!ovx/run.sh
+
+!src/gr00t/gr00t/
+!src/psi/__init__.py
+!src/psi/deploy/helpers.py
+!baselines/gr00t-n1.7/
+
+!third_party/SIMPLE/pyproject.toml
+!third_party/SIMPLE/uv.lock
+!third_party/SIMPLE/README.md
+!third_party/SIMPLE/src/
+!third_party/SIMPLE/configs/
+!third_party/SIMPLE/data/
+!third_party/SIMPLE/third_party/
+
+# Nested SIMPLE submodules the eval never installs (not uv sources of the synced groups).
+third_party/SIMPLE/third_party/AMO/
+third_party/SIMPLE/third_party/gsnet/
+
+# cuRobo is compiled into a wheel by the curobo stage; only its package source is needed.
+third_party/SIMPLE/third_party/curobo/images/
+third_party/SIMPLE/third_party/curobo/docker/
+third_party/SIMPLE/third_party/curobo/benchmark/
+third_party/SIMPLE/third_party/curobo/examples/
+third_party/SIMPLE/third_party/curobo/tests/
+
+**/.git
+**/__pycache__
+**/*.pyc
+**/.venv*
+**/*.egg-info

@@ -10,6 +10,7 @@ wheels/
 .venv*
 
 /data/
+/evals/
 cache
 *.mp4
 ml-egodex_dataset/ # soft link to the egodex dataset
