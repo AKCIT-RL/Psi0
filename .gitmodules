@@ -1,4 +1,7 @@
 [submodule "third_party/SIMPLE"]
 	path = third_party/SIMPLE
 	url = https://github.com/AKCIT-RL/SIMPLE.git
-	branch = feat/weg_wmo
+	branch = industrial_env
+[submodule "third_party/unifolm-wla"]
+	path = third_party/unifolm-wla
+	url = https://github.com/unitreerobotics/unifolm-wla
