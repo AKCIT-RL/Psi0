@@ -149,6 +149,8 @@ Ressalva: o checkpoint "best" do Ψ0 foi escolhido nesse val (early stopping), l
 
 ---
 ## 8. Pendências / ambiguidades
+
+> **Resolvido na F2a** (`$WLA_EXP/f2_validation/wbt_facts.json`, 20 ep WBT): EE `gripper_base` = base **pelvis**, cintura (yaw,roll,pitch), tip `wrist_yaw_link` + offset fixo E (rot. identidade) esq [0.10995,-0.00022,0] m / dir [0.10983,0.00065,0] m — p99 pos ≤ 3.9 mm, rot ~0 (VERIFIED); ordem do punho no parquet = URDF (roll,pitch,yaw), os `names` do info.json estão errados. Ação EE = FK das juntas-alvo. **fig6d: 1 = aberto**, menor = fechado (thumb_lat sobe ao fechar). `angle_z` = **yaw-rate** rad/s (= `state_base_rot[5]`); vx,vy no frame do corpo m/s; `base_command[3]` = altura **medida** (= z de `state_base_pose`). Golden e round-trip WBT: PASS (diff 0 / ≤3e-8).
 1. **Datasets locais vazios**; golden test no WBT e calibração de FK exigem o download (sbatch). Confirmar com o usuário que `G1ToteMix-psi0` é o dataset alvo (PLAN).
 2. **Frame EE "gripper_base"** (S: pelvis) e offset Brainco→Dex3: não há URDF do BrainCo no repo. Calibrar `E` por mínimos quadrados com WBT (`left_arm`, `waist_state_joint` → `ee_pose_gripper_base`; `observation.state.recomputed_ee_valid` sugere EE recomputado por FK). Nomes WBT do punho (`wrist_yaw, wrist_roll, wrist_pitch`, `info.json`) diferem da ordem do URDF/SIMPLE (`roll, pitch, yaw`): testar as duas ordens.
 3. **fig6d**: sentido 0=aberto/1=fechado (S) e mapeamento Dex3(7)→6 são lossy (ring/little sem equivalente). Verificar no WBT pelo valor inicial dos episódios. Decidir A1 (6 dims preenchidas, duplicatas) vs A2 (máscara por dim em thumb_lat/ring/little; padrão de máscara novo vs pré-treino).
