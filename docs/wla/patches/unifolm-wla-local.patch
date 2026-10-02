@@ -1,0 +1,63 @@
+diff --git a/unifolm_wla/dataloader/multi_source_dataset/single_source_dataset.py b/unifolm_wla/dataloader/multi_source_dataset/single_source_dataset.py
+index c4fe4b6..2b66fb3 100644
+--- a/unifolm_wla/dataloader/multi_source_dataset/single_source_dataset.py
++++ b/unifolm_wla/dataloader/multi_source_dataset/single_source_dataset.py
+@@ -155,6 +155,7 @@ class SingleSourceDataset(Dataset):
+                         tolerance_s=1.0 / self.source_fps,
+                         selected_keys=self.selected_keys,
+                         cache_dir=self.training_config.cache_dir,
++                        video_backend="pyav",  # torchcodec exige FFmpeg .so ausente neste nó
+                     )
+                 except Exception as e:
+                     logger.error(f"Failed to load dataset for task dir {td}: {e}")
+@@ -170,6 +171,7 @@ class SingleSourceDataset(Dataset):
+                 tolerance_s=1.0 / self.source_fps,
+                 selected_keys=self.selected_keys,
+                 cache_dir=self.training_config.cache_dir,
++                video_backend="pyav",
+             )
+             self._datasets.append(ds)
+ 
+diff --git a/unifolm_wla/training/train_unifolm_wla.py b/unifolm_wla/training/train_unifolm_wla.py
+index 46444a6..00008ff 100644
+--- a/unifolm_wla/training/train_unifolm_wla.py
++++ b/unifolm_wla/training/train_unifolm_wla.py
+@@ -177,16 +177,28 @@ class VLATrainer(TrainerUtils):
+         )
+ 
+     def _init_wandb(self):
+-        """Initialize Weights & Biases."""
+-        if self.accelerator.is_main_process:
+-            wandb.init(
+-                name=self.config.run_id,
+-                dir=os.path.join(self.config.output_dir, "wandb"),
+-                project=self.config.wandb_project,
+-                entity=self.config.wandb_entity,
+-                group="vla-train",
+-                mode="offline"
+-            )
++        """Initialize Weights & Biases. mode vem de WANDB_MODE (online no Forge)."""
++        if not self.accelerator.is_main_process:
++            return
++        mode = os.environ.get("WANDB_MODE", "online")
++        run = wandb.init(
++            name=self.config.run_id,
++            id=str(self.config.run_id).replace("/", "_"),
++            resume="allow",
++            dir=os.path.join(self.config.output_dir, "wandb"),
++            project=self.config.wandb_project,
++            entity=self.config.wandb_entity,
++            group="vla-train",
++            mode=mode,
++        )
++        url = getattr(run, "url", None)
++        if url:
++            self.accelerator.print(f"wandb: {url}")
++            path = os.environ.get("WLA_WANDB_RUN_FILE")
++            if path:
++                os.makedirs(os.path.dirname(path), exist_ok=True)
++                with open(path, "w") as f:
++                    f.write(url + "\n")
+ 
+     def _save_initial_configs(self):
+         """Save full config and training script at the very start of training."""
