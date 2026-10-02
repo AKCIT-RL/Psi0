@@ -24,7 +24,8 @@ a = ap.parse_args()
 eps = sorted(json.load(open(PSI0 / "docs/wla/split.json"))[a.split])[: a.limit]
 out = Path(a.out)
 out.mkdir(parents=True, exist_ok=True)
-for e in eps:
+# o eval do SIMPLE vê os episódios renumerados 0..N-1 (s0_make_split_roots): nome = posição em sorted(split)
+for n, e in enumerate(eps):
     act = resample_episode(read_episode_raw(Path(a.src), e))["action"].astype(np.float32)
-    np.save(out / f"{a.name}__episode_{e}.npy", act)
+    np.save(out / f"{a.name}__episode_{n}.npy", act)
 print(f"{a.split}: {len(eps)} episódios -> {out}; exemplo shape {act.shape}")
