@@ -3,7 +3,7 @@
 #SBATCH --partition=b200n1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=120G
-#SBATCH --time=01:30:00
+#SBATCH --time=00:50:00
 #SBATCH --output=/raid/user_marcospaulo/slurm_logs/%x-%j.out
 # CPU-only (sem GPU na fila): dry-run do servidor com o WLA-Base num chunk real de VAL. Só valida o caminho.
 set -uo pipefail

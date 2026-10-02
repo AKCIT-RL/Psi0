@@ -11,6 +11,7 @@
 # Eval closed-loop no SIMPLE (task shelf->table, MuJoCo headless EGL) com servidor WLA no mesmo job via localhost.
 #   RUN=<nome>            -> $WLA_EXP/$RUN/
 #   MODE=oracle_raw|oracle_adapter|model
+#   OFFLINE=0 permite baixar assets (job de download, sem token)
 #   GPU=0 + sbatch --gres=none -> CPU-only (GL=osmesa)
 #   SPLIT=val|train|test   (test só no relatório final congelado!)   N=<episódios>   SEED=<seed>
 #   model: CKPT=<.safetensors> SOURCE=<norm source> PROFILE=wbt|psi0_tote BASE_VLM=<tokenizer dir> [EXEC_STEPS=30] [INSTR=...]
@@ -53,10 +54,12 @@ for i in $(seq 1 180); do curl -sf "http://127.0.0.1:$PORT/health" >/dev/null &&
 curl -sf "http://127.0.0.1:$PORT/health" || { echo "servidor não subiu"; tail -30 "$OUT/server.log"; exit 1; }
 
 # ---- simulador (container; código/ submódulos do nosso checkout por cima da imagem) ----
-BIND=(-B "$RAID:$RAID" -B "$SIMPLE/src:/workspace/simple/src" -B "$SIMPLE/third_party/gear_sonic:/workspace/simple/third_party/gear_sonic" -B "$SIMPLE/third_party/decoupled_wbc:/workspace/simple/third_party/decoupled_wbc")
+# data/ do SIMPLE (assets baixados sob demanda de USC-PSI-Lab/SIMPLE) persistente em /raid; OFFLINE=0 só no job de download
+SIMPLE_DATA=$RAID/simple_data; mkdir -p "$SIMPLE_DATA"
+BIND=(-B "$SIMPLE_DATA:/workspace/simple/data" -B "$RAID:$RAID" -B "$SIMPLE/src:/workspace/simple/src" -B "$SIMPLE/third_party/gear_sonic:/workspace/simple/third_party/gear_sonic" -B "$SIMPLE/third_party/decoupled_wbc:/workspace/simple/third_party/decoupled_wbc")
 GL=${GL:-egl}; NV=(); [[ ${GPU:-1} == 1 ]] && NV=(--nv)   # GPU=0 -> job CPU (render por software, GL=osmesa)
 # --nv injeta libs glvnd do host (glibc 2.39) que sombreiam as da imagem (2.35) -> 'GLIBC_2.38 not found'; priorizar as da imagem
-ENVV=(--env LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/.singularity.d/libs --env MUJOCO_GL=$GL --env PYOPENGL_PLATFORM=$GL --env HF_HUB_OFFLINE=1 --env OMNI_KIT_ACCEPT_EULA=Y --env SIMPLE_EVAL_EPISODE_ID= \
+ENVV=(--env LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/.singularity.d/libs --env MUJOCO_GL=$GL --env PYOPENGL_PLATFORM=$GL --env HF_HUB_OFFLINE=${OFFLINE:-1} --env OMNI_KIT_ACCEPT_EULA=Y --env SIMPLE_EVAL_EPISODE_ID= \
       --env WLA_EXEC_STEPS=${EXEC_STEPS:-30} ${ORACLE:+--env WLA_ORACLE_DIR=$ORACLE})
 apptainer exec "${NV[@]}" --cleanenv "${BIND[@]}" "${ENVV[@]}" --pwd /workspace/simple "$SB" \
   /workspace/simple/.venv/bin/eval-decoupled-wbc simple/G1WholebodyLocomotionPickTotesShelfToTableTeleop-v0 wla_decoupled_wbc "$SPLIT" \
