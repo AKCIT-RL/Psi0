@@ -12,7 +12,7 @@
 #   RUN=<nome>            -> $WLA_EXP/$RUN/
 #   MODE=oracle_raw|oracle_adapter|model
 #   OFFLINE=0 permite baixar assets (job de download, sem token)
-#   GPU=0 + sbatch --gres=none -> CPU-only (GL=osmesa)
+#   simulador roda em CPU (Mesa EGL); NVSIM=1 usaria o EGL da NVIDIA (--nv). Modos oracle_*: sbatch --gres=none
 #   SPLIT=val|train|test   (test só no relatório final congelado!)   N=<episódios>   SEED=<seed>
 #   model: CKPT=<.safetensors> SOURCE=<norm source> PROFILE=wbt|psi0_tote BASE_VLM=<tokenizer dir> [EXEC_STEPS=30] [INSTR=...]
 set -euo pipefail
@@ -57,7 +57,7 @@ curl -sf "http://127.0.0.1:$PORT/health" || { echo "servidor não subiu"; tail -
 # data/ do SIMPLE (assets baixados sob demanda de USC-PSI-Lab/SIMPLE) persistente em /raid; OFFLINE=0 só no job de download
 SIMPLE_DATA=$RAID/simple_data; mkdir -p "$SIMPLE_DATA"
 BIND=(-B "$SIMPLE_DATA:/workspace/simple/data" -B "$RAID:$RAID" -B "$SIMPLE/src:/workspace/simple/src" -B "$SIMPLE/third_party/gear_sonic:/workspace/simple/third_party/gear_sonic" -B "$SIMPLE/third_party/decoupled_wbc:/workspace/simple/third_party/decoupled_wbc")
-GL=${GL:-egl}; NV=(); [[ ${GPU:-1} == 1 ]] && NV=(--nv)   # GPU=0 -> job CPU (render por software, GL=osmesa)
+GL=${GL:-egl}; NV=(); [[ ${NVSIM:-0} == 1 ]] && NV=(--nv)   # padrão: simulador em CPU (EGL via Mesa, validado); GPU do job só para o servidor do modelo
 # --nv injeta libs glvnd do host (glibc 2.39) que sombreiam as da imagem (2.35) -> 'GLIBC_2.38 not found'; priorizar as da imagem
 ENVV=(--env LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/.singularity.d/libs --env MUJOCO_GL=$GL --env PYOPENGL_PLATFORM=$GL --env HF_HUB_OFFLINE=${OFFLINE:-1} --env OMNI_KIT_ACCEPT_EULA=Y --env SIMPLE_EVAL_EPISODE_ID= \
       --env WLA_EXEC_STEPS=${EXEC_STEPS:-30} ${ORACLE:+--env WLA_ORACLE_DIR=$ORACLE})
