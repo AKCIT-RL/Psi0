@@ -9,6 +9,7 @@ NÃO usa a classe do dataset. Comportamento de referência: single_source_datase
 
 from dataclasses import dataclass
 from pathlib import Path
+import os
 
 import numpy as np
 from unifolm_wla.dataloader.multi_source_dataset.action_mapping import SLICES, STATE_SLICES
@@ -62,6 +63,68 @@ ACTIVE_STATE_SLICES = [
 
 
 @dataclass(frozen=True)
+class Profile:
+    """Perfil de schema: quais chaves/slots o dataset convertido possui."""
+
+    name: str
+    active_action_slices: tuple[str, ...]
+    active_state_slices: tuple[str, ...]
+    has_action_legs: bool
+    has_state_legs: bool
+    has_base_pose: bool
+    has_base_rot: bool
+    default_stats_dir: str | None = None
+
+    @property
+    def action_keys(self) -> list[str]:
+        keys = [*A_EE.values(), *A_FIG.values(), A_WAIST, A_BASE_CMD]
+        if self.has_action_legs:
+            keys += [*A_LEG.values()]
+        if self.has_base_pose:
+            keys += [A_BASE_POSE]
+        return keys
+
+    @property
+    def state_keys(self) -> list[str]:
+        keys = [*S_EE.values(), *S_FIG.values(), S_WAIST]
+        if self.has_state_legs:
+            keys += [*S_LEG.values()]
+        if self.has_base_rot:
+            keys += [S_BASE_ROT]
+        if self.has_base_pose:
+            keys += [S_BASE_POSE]
+        return keys
+
+
+# WBT oficial (200 ep): EE+fig6d+waist+base_command+base_pose+pernas (ação e estado).
+WBT = Profile(
+    name="wbt",
+    active_action_slices=tuple(ACTIVE_ACTION_SLICES),
+    active_state_slices=tuple(ACTIVE_STATE_SLICES),
+    has_action_legs=True, has_state_legs=True, has_base_pose=True, has_base_rot=True,
+    default_stats_dir=str(WLA_STATS_DIR),
+)
+
+# Ψ0 convertido (F2b, D2): sem ação de perna, sem base_pose/base_rot (sem odometria/IMU).
+# ação ativa = 31/54; estado ativo = 45/60.
+PSI0_TOTE = Profile(
+    name="psi0_tote",
+    active_action_slices=(
+        "left_xyz_rotvec", "left_fig6d", "right_xyz_rotvec", "right_fig6d", "waist_joint",
+        "base_vx_vy", "base_vw", "height",
+    ),
+    active_state_slices=(
+        "left_xyz_rot6d", "left_fig6d", "right_xyz_rot6d", "right_fig6d", "waist_joint",
+        "left_leg_joint", "right_leg_joint",
+    ),
+    has_action_legs=False, has_state_legs=True, has_base_pose=False, has_base_rot=False,
+    default_stats_dir=os.path.join(
+        os.environ.get("WLA_DATA_ROOT", "/raid/user_marcospaulo/datasets/unifolm"),
+        "stats_psi0_tote_train"),
+)
+
+
+@dataclass(frozen=True)
 class NormStats:
     action_offset: np.ndarray  # (54,) float32; x_norm = (x - offset) / scale
     action_scale: np.ndarray
@@ -76,8 +139,10 @@ def _put(off, sc, sl, o, s):
     sc[sl.start:sl.start + n] = s[:n]
 
 
-def load_norm_stats(stats_dir: str | Path = WLA_STATS_DIR) -> NormStats:
+def load_norm_stats(stats_dir: str | Path | None = None, profile: Profile = WBT) -> NormStats:
     """norm=minmax_q (stats.json), rel=zscore (relative_stats.json), fig6d=minmax_q."""
+    if stats_dir is None:
+        stats_dir = profile.default_stats_dir or WLA_STATS_DIR
     stats_dir = Path(stats_dir)
     data = load_stats(stats_dir / "stats.json")
     rel = load_relative_stats(stats_dir / "relative_stats.json")
@@ -86,9 +151,11 @@ def load_norm_stats(stats_dir: str | Path = WLA_STATS_DIR) -> NormStats:
     for side in ("left", "right"):
         _put(ao, asc, SLICES[f"{side}_xyz_rotvec"], *get_normalizer(rel, f"{side}_ee_pose_gripper_base", "zscore"))
         _put(ao, asc, SLICES[f"{side}_fig6d"], *get_normalizer(data, A_FIG[side], "minmax_q"))
-        _put(ao, asc, SLICES[f"{side}_leg_joint"], *get_normalizer(data, A_LEG[side], "minmax_q"))
+        if profile.has_action_legs:
+            _put(ao, asc, SLICES[f"{side}_leg_joint"], *get_normalizer(data, A_LEG[side], "minmax_q"))
     _put(ao, asc, SLICES["waist_joint"], *get_normalizer(data, A_WAIST, "minmax_q"))
-    _put(ao, asc, SLICES["base_rotvec"], *get_normalizer(rel, "action_base_pose", "zscore"))
+    if profile.has_base_pose:
+        _put(ao, asc, SLICES["base_rotvec"], *get_normalizer(rel, "action_base_pose", "zscore"))
     bo, bs = get_normalizer(data, A_BASE_CMD, "minmax_q")
     ao[BASE_CMD_SLOTS], asc[BASE_CMD_SLOTS] = bo, bs
 
@@ -97,12 +164,14 @@ def load_norm_stats(stats_dir: str | Path = WLA_STATS_DIR) -> NormStats:
         o, s = get_normalizer(data, S_EE[side], "minmax_q")
         _put(so, ss, slice(STATE_SLICES[f"{side}_xyz_rot6d"].start, STATE_SLICES[f"{side}_xyz_rot6d"].start + 3), o[:3], s[:3])  # só xyz
         _put(so, ss, STATE_SLICES[f"{side}_fig6d"], *get_normalizer(data, S_FIG[side], "minmax_q"))
-        _put(so, ss, STATE_SLICES[f"{side}_leg_joint"], *get_normalizer(data, S_LEG[side], "minmax_q"))
+        if profile.has_state_legs:
+            _put(so, ss, STATE_SLICES[f"{side}_leg_joint"], *get_normalizer(data, S_LEG[side], "minmax_q"))
     _put(so, ss, STATE_SLICES["waist_joint"], *get_normalizer(data, S_WAIST, "minmax_q"))
-    o, s = get_normalizer(data, S_BASE_ROT, "minmax_q")  # [gravidade(3), omega(3)]: gravidade sem normalizar
-    o, s = o.copy(), s.copy()
-    o[:3], s[:3] = 0.0, 1.0
-    _put(so, ss, STATE_SLICES["base_rotvec"], o, s)
+    if profile.has_base_rot:
+        o, s = get_normalizer(data, S_BASE_ROT, "minmax_q")  # [gravidade(3), omega(3)]: gravidade sem normalizar
+        o, s = o.copy(), s.copy()
+        o[:3], s[:3] = 0.0, 1.0
+        _put(so, ss, STATE_SLICES["base_rotvec"], o, s)
     return NormStats(ao, asc, so, ss)
 
 
@@ -113,23 +182,25 @@ def _mask(slices: dict, names: list[str], dim: int) -> np.ndarray:
     return m
 
 
-def action_mask() -> np.ndarray:
-    return _mask(SLICES, ACTIVE_ACTION_SLICES, UNIFIED_DIM)
+def action_mask(profile: Profile = WBT) -> np.ndarray:
+    return _mask(SLICES, list(profile.active_action_slices), UNIFIED_DIM)
 
 
-def state_mask() -> np.ndarray:
-    return _mask(STATE_SLICES, ACTIVE_STATE_SLICES, STATE_DIM)
+def state_mask(profile: Profile = WBT) -> np.ndarray:
+    return _mask(STATE_SLICES, list(profile.active_state_slices), STATE_DIM)
 
 
-def state_unnorm(row: dict[str, np.ndarray]) -> np.ndarray:
+def state_unnorm(row: dict[str, np.ndarray], profile: Profile = WBT) -> np.ndarray:
     """(60,) float32 não normalizado; row: chave de parquet -> vetor do frame atual."""
     s = np.zeros(STATE_DIM, np.float32)
     for side in ("left", "right"):
         s[STATE_SLICES[f"{side}_xyz_rot6d"]] = pose_to_xyz_rot6d_from_format(np.asarray(row[S_EE[side]], np.float32), "xyz_rpy")
         s[STATE_SLICES[f"{side}_fig6d"]] = row[S_FIG[side]]
-        s[STATE_SLICES[f"{side}_leg_joint"]] = row[S_LEG[side]]
+        if profile.has_state_legs:
+            s[STATE_SLICES[f"{side}_leg_joint"]] = row[S_LEG[side]]
     s[STATE_SLICES["waist_joint"]] = row[S_WAIST]
-    s[STATE_SLICES["base_rotvec"]] = row[S_BASE_ROT]
+    if profile.has_base_rot:
+        s[STATE_SLICES["base_rotvec"]] = row[S_BASE_ROT]
     return s
 
 
@@ -144,7 +215,7 @@ def _norm(x, o, s):
     return (x - o) / s
 
 
-def action_chunk(row: dict[str, np.ndarray], win: dict[str, np.ndarray], ns: NormStats) -> np.ndarray:
+def action_chunk(row: dict[str, np.ndarray], win: dict[str, np.ndarray], ns: NormStats, profile: Profile = WBT) -> np.ndarray:
     """(H,54) float32 normalizado. row: frame atual (estado); win: chave -> (H,D) futuro t..t+H-1."""
     ao, asc = ns.action_offset, ns.action_scale
     A = np.zeros((H, UNIFIED_DIM), np.float32)
@@ -153,30 +224,33 @@ def action_chunk(row: dict[str, np.ndarray], win: dict[str, np.ndarray], ns: Nor
         A[:, sl] = _norm(_rel(row[S_EE[side]], win[A_EE[side]], "xyz_rpy"), ao[sl], asc[sl])  # float64 como no oficial
         sl = SLICES[f"{side}_fig6d"]
         A[:, sl] = _norm(win[A_FIG[side]], ao[sl], asc[sl])
-        sl = SLICES[f"{side}_leg_joint"]
-        A[:, sl] = _norm(win[A_LEG[side]], ao[sl], asc[sl])
+        if profile.has_action_legs:
+            sl = SLICES[f"{side}_leg_joint"]
+            A[:, sl] = _norm(win[A_LEG[side]], ao[sl], asc[sl])
     sl = SLICES["waist_joint"]
     A[:, sl] = _norm(win[A_WAIST], ao[sl], asc[sl])
-    sl = SLICES["base_rotvec"]
-    A[:, sl] = _norm(_rel(row[S_BASE_POSE], win[A_BASE_POSE], "xyz_quat"), ao[sl], asc[sl])
+    if profile.has_base_pose:
+        sl = SLICES["base_rotvec"]
+        A[:, sl] = _norm(_rel(row[S_BASE_POSE], win[A_BASE_POSE], "xyz_quat"), ao[sl], asc[sl])
     A[:, BASE_CMD_SLOTS] = _norm(win[A_BASE_CMD], ao[BASE_CMD_SLOTS], asc[BASE_CMD_SLOTS])
     return A
 
 
 def build_sample(
-    cols: dict[str, np.ndarray], idx: int, ep_start: int, ep_end: int, ns: NormStats
+    cols: dict[str, np.ndarray], idx: int, ep_start: int, ep_end: int, ns: NormStats,
+    profile: Profile = WBT,
 ) -> dict[str, np.ndarray]:
     """Amostra no índice global `idx`; episódio = linhas [ep_start, ep_end)."""
-    row = {k: cols[k][idx] for k in STATE_KEYS}
+    row = {k: cols[k][idx] for k in profile.state_keys}
     widx = np.clip(idx + np.arange(H), ep_start, ep_end - 1)
-    win = {k: cols[k][widx] for k in ACTION_KEYS}
-    s_un = state_unnorm(row)
+    win = {k: cols[k][widx] for k in profile.action_keys}
+    s_un = state_unnorm(row, profile)
     return {
-        "action": action_chunk(row, win, ns),
+        "action": action_chunk(row, win, ns, profile),
         "state": _norm(s_un, ns.state_offset, ns.state_scale),
         "state_unnorm": s_un,
-        "action_mask": action_mask(),
-        "state_mask": state_mask(),
+        "action_mask": action_mask(profile),
+        "state_mask": state_mask(profile),
     }
 
 
@@ -185,6 +259,7 @@ def invert_action(
     state_unnorm_: np.ndarray,
     stats: NormStats,
     base_pose_curr: np.ndarray | None = None,
+    profile: Profile = WBT,
 ) -> dict[str, np.ndarray]:
     """(H,54) normalizado + estado atual não normalizado (60) -> valores absolutos.
 
@@ -201,14 +276,16 @@ def invert_action(
         out[f"{side}_ee_T"] = T_abs
         out[f"{side}_ee_xyz_rpy"] = se3_to_xyz_rpy(T_abs)
         out[f"{side}_fig6d"] = a[:, SLICES[f"{side}_fig6d"]]
-        out[f"{side}_leg"] = a[:, SLICES[f"{side}_leg_joint"]]
+        if profile.has_action_legs:
+            out[f"{side}_leg"] = a[:, SLICES[f"{side}_leg_joint"]]
     out["waist"] = a[:, SLICES["waist_joint"]]
     out["base_command"] = a[:, BASE_CMD_SLOTS]  # [vx, vy, angle_z, height]
-    rel_base = a[:, SLICES["base_rotvec"]]
-    out["base_pose_rel"] = rel_base
-    if base_pose_curr is not None:
-        T_b = pose_to_se3_from_format(np.asarray(base_pose_curr, np.float64), "xyz_quat") @ xyz_rotvec_to_se3(rel_base)
-        out["base_pose_T"] = T_b
+    if profile.has_base_pose:
+        rel_base = a[:, SLICES["base_rotvec"]]
+        out["base_pose_rel"] = rel_base
+        if base_pose_curr is not None:
+            T_b = pose_to_se3_from_format(np.asarray(base_pose_curr, np.float64), "xyz_quat") @ xyz_rotvec_to_se3(rel_base)
+            out["base_pose_T"] = T_b
     return out
 
 

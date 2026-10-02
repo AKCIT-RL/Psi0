@@ -1,0 +1,71 @@
+# configs/wla/psi0_tote.yaml
+# F2b — dataset Ψ0 convertido (G1ToteMix_psi0_trainval, LeRobot v3.0 @30FPS, schema WBT).
+# Derivado de configs/wla/unitree_wbt_shelf.yaml; âncora `psi0_tote_base` = unitree_fullbody_base
+# SEM as chaves ausentes no Ψ0 (grippers, torso, ação de pernas, base_pose, base_rot).
+# Esperado pelo loader: action_mask soma 31, state_mask soma 45 (validado em validate_roundtrip.py R1).
+target_fps: 30
+chunk_size: 30  # 1 second at 30 FPS
+image_size: [336, 448]
+norm_type: "minmax_q"
+rel_norm_type: "zscore"
+state_norm_type: "minmax_q"
+gripper_norm_type: "minmax_q"
+data_base: "/raid/user_marcospaulo/datasets/unifolm"
+cache_dir: "/raid/user_marcospaulo/cache/unifolm_arrow"
+
+# ============================================================
+# YAML anchors (top-level keys, ignored by Python loader)
+# ============================================================
+.psi0_tote_base: &psi0_tote_base
+  enabled: true
+  weight: 1.0
+  robot_type: "unitree"
+  source_fps: 30  # dataset JÁ convertido para 30 FPS (D1); o loader não reamostra
+  arm_type: "dual_with_legs"
+  ee_format: "xyz_rpy"
+  multi_task: true
+  merge_left_right_ee_stats: true
+  precollected_stats_path: "/raid/user_marcospaulo/datasets/unifolm/stats_psi0_tote_train"  # D4: só TRAIN
+  action_keys:
+    left_ee_pose: "action.left_ee_pose_gripper_base"
+    right_ee_pose: "action.right_ee_pose_gripper_base"
+    left_fig6d: "action.left_fig6d"
+    right_fig6d: "action.right_fig6d"
+    waist_joint: "action.waist_action_joint"
+    base_command: "action.base_command"
+    # sem left_leg/right_leg (Ψ0 não tem ação de perna) e sem base_pose (sem odometria)
+  state_keys:
+    left_ee_pose: "observation.state.left_ee_pose_gripper_base"
+    right_ee_pose: "observation.state.right_ee_pose_gripper_base"
+    left_fig6d: "observation.state.left_fig6d"
+    right_fig6d: "observation.state.right_fig6d"
+    waist_joint: "observation.state.waist_state_joint"
+    left_leg: "observation.state.left_leg"
+    right_leg: "observation.state.right_leg"
+    # sem base_pose/base_rot (sem IMU/odometria no Ψ0)
+  relative_stats_key_map:
+    left_ee_pose: "left_ee_pose_gripper_base"
+    right_ee_pose: "right_ee_pose_gripper_base"
+    # sem base_pose: slot base_rotvec da ação fica mascarado
+  base_command_dims:
+    vx: 0
+    vy: 1
+    vw: 2      # angle_z = yaw-rate (rad/s), verificado na F2a
+    height: 3
+
+.psi0_img_egocentric: &psi0_img_egocentric
+  - key: "observation.images.egocentric"  # única câmera do Ψ0 (360x640) -> papel head_left
+    role: "head_left"
+
+image_roles:
+  - "head_left"
+  - "cam_wrist_left"
+  - "cam_wrist_right"
+
+datasets:
+
+  # Único dataset habilitado: Ψ0 Tote convertido (train+val; test NUNCA — regra 1).
+  - <<: *psi0_tote_base
+    name: "Psi0_Tote_Dataset"
+    data_path: "Psi0_Tote_Dataset/"
+    image_keys: *psi0_img_egocentric

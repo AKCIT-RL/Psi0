@@ -183,3 +183,81 @@ def rel_to_abs(T_curr: np.ndarray, rel_xyz_rotvec: np.ndarray) -> np.ndarray:
 def rotation_angle(Ra: np.ndarray, Rb: np.ndarray) -> np.ndarray:
     """Distância geodésica (rad) entre rotações, (...,3,3)."""
     return np.linalg.norm(matrix_to_rotvec(np.swapaxes(Ra, -1, -2) @ Rb), axis=-1)
+
+
+# Offset fixo tip(wrist_yaw_link)->EE "gripper_base" (translação no frame do tip, rotação
+# identidade), calibrado no WBT oficial na F2a ($WLA_EXP/f2_validation/wbt_facts.json,
+# VERIFIED: p99 pos <= 3.9 mm, rot ~0). conversion_spec.md §8 "Resolvido na F2a".
+EE_OFFSET_XYZ = {
+    "left": np.array([0.10994945822848229, -0.00021625560909691147, 0.0]),
+    "right": np.array([0.10983074060032255, 0.0006490814488727838, 0.0]),
+}
+
+
+def ee_offset(side: str) -> np.ndarray:
+    """(4,4) transformação fixa tip -> EE (gripper_base) para o lado dado."""
+    E = np.eye(4)
+    E[:3, 3] = EE_OFFSET_XYZ[side]
+    return E
+
+
+def fk_ee(q_waist_yrp: np.ndarray, q_arm: np.ndarray, side: str) -> np.ndarray:
+    """FK até o EE gripper_base: fk(pelvis->{side}_wrist_yaw_link) @ E (...,4,4)."""
+    return fk(q_waist_yrp, q_arm, side) @ ee_offset(side)
+
+
+def ik(
+    T_target: np.ndarray,
+    side: str,
+    q_arm0: np.ndarray,
+    q_waist0: np.ndarray | None = None,
+    fix_waist: bool = True,
+    max_iter: int = 200,
+    tol_pos: float = 1e-9,
+    tol_rot: float = 1e-9,
+    lam: float = 1e-6,
+    eps: float = 1e-8,
+    max_step: float = 0.5,
+) -> tuple[np.ndarray, np.ndarray, dict]:
+    """IK numpy por damped least squares (Jacobiano numérico) para o braço do G1.
+
+    Resolve q tal que fk_ee(q_waist, q_arm, side) ≈ T_target. Com fix_waist=True
+    (padrão de deploy: a cintura vem de action.waist_action_joint) só as 7 juntas do
+    braço são otimizadas (redundância 7-DoF -> |q - q'| não vai a zero; verificar EE).
+    Seed: q_arm0 (e q_waist0) — usar q do frame anterior no deploy.
+
+    Retorna (q_waist, q_arm, info) com info = {"converged", "iters", "pos_err", "rot_err"}.
+    """
+    T_target = np.asarray(T_target, dtype=np.float64)
+    lo, hi = joint_limits(side)
+    q = np.concatenate([np.zeros(3) if q_waist0 is None else np.asarray(q_waist0, np.float64),
+                        np.asarray(q_arm0, np.float64)])
+    free = np.arange(3, 10) if fix_waist else np.arange(10)
+    lo, hi = np.clip(lo, -10, 10), np.clip(hi, -10, 10)
+
+    def err(qv: np.ndarray) -> np.ndarray:
+        T_cur = fk_ee(qv[:3], qv[3:], side)
+        return se3_to_xyz_rotvec(se3_inverse(T_cur) @ T_target)
+
+    e = err(q)
+    info = {"converged": False, "iters": 0, "pos_err": float(np.linalg.norm(e[:3])),
+            "rot_err": float(np.linalg.norm(e[3:]))}
+    for it in range(max_iter):
+        if info["pos_err"] < tol_pos and info["rot_err"] < tol_rot:
+            info["converged"] = True
+            break
+        J = np.empty((6, len(free)))
+        for k, i in enumerate(free):
+            dq = q.copy()
+            dq[i] += eps
+            J[:, k] = (err(dq) - e) / eps
+        # J = d(err)/dq e err decresce ao aproximar do alvo => J = -J_geo; passo de Gauss-Newton: dq = -J^T (J J^T + lam I)^-1 e
+        dq_free = -J.T @ np.linalg.solve(J @ J.T + lam * np.eye(6), e)
+        nrm = np.linalg.norm(dq_free)
+        if nrm > max_step:
+            dq_free *= max_step / nrm
+        q[free] = np.clip(q[free] + dq_free, lo[free], hi[free])
+        e = err(q)
+        info.update(iters=it + 1, pos_err=float(np.linalg.norm(e[:3])),
+                    rot_err=float(np.linalg.norm(e[3:])))
+    return q[:3], q[3:], info
