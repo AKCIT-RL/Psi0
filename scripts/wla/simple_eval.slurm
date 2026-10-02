@@ -79,3 +79,8 @@ json.dump({"n": len(res), "successes": sum(res.values()), "success_rate": (sum(r
 print(open(f"{out}/metrics.json").read())
 PY
 echo EVAL_DONE
+
+# ---- W&B (api.wandb.ai, projeto wla-simple-eval): métricas + vídeos de cada run; WANDB_SYNC=0 desliga ----
+if [[ ${WANDB_SYNC:-1} == 1 ]]; then
+  (unset WANDB_BASE_URL; "$WLA_REPO/.venv/bin/python" scripts/wla/wandb_sync.py simple "$OUT" --project wla-simple-eval) || echo "wandb sync falhou (não fatal)"
+fi
