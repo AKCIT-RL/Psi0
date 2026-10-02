@@ -61,10 +61,11 @@ GL=${GL:-egl}; NV=(); [[ ${NVSIM:-0} == 1 ]] && NV=(--nv)   # padrão: simulador
 # --nv injeta libs glvnd do host (glibc 2.39) que sombreiam as da imagem (2.35) -> 'GLIBC_2.38 not found'; priorizar as da imagem
 ENVV=(--env LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/.singularity.d/libs --env MUJOCO_GL=$GL --env PYOPENGL_PLATFORM=$GL --env HF_HUB_OFFLINE=${OFFLINE:-1} --env OMNI_KIT_ACCEPT_EULA=Y --env SIMPLE_EVAL_EPISODE_ID= \
       --env WLA_EXEC_STEPS=${EXEC_STEPS:-30} ${ORACLE:+--env WLA_ORACLE_DIR=$ORACLE})
-apptainer exec "${NV[@]}" --cleanenv "${BIND[@]}" "${ENVV[@]}" --pwd /workspace/simple "$SB" \
+HOMEOPT=(); [[ ${SIM_MODE:-mujoco} == *isaac* ]] && { NV=(--nv); mkdir -p "$RAID/cache/simple_home"; HOMEOPT=(--home "$RAID/cache/simple_home"); ENVV+=(--env ACCEPT_EULA=Y --env PRIVACY_CONSENT=Y); }  # Isaac (render fotorrealista como o dataset) precisa de GPU; HOME fora da home real
+apptainer exec "${NV[@]}" "${HOMEOPT[@]}" --cleanenv "${BIND[@]}" "${ENVV[@]}" --pwd /workspace/simple "$SB" \
   /workspace/simple/.venv/bin/eval-decoupled-wbc simple/G1WholebodyLocomotionPickTotesShelfToTableTeleop-v0 wla_decoupled_wbc "$SPLIT" \
   --eval-config "$OUT/eval_config.yaml" --num-episodes "$N" --seed "$SEED" --host 127.0.0.1 --port "$PORT" \
-  --sim-mode mujoco --headless --eval-dir "$OUT/eval" --success-criteria 0.9 --save-video 2>&1 | tee "$OUT/sim.log"
+  --sim-mode ${SIM_MODE:-mujoco} --headless --eval-dir "$OUT/eval" --success-criteria 0.9 --save-video 2>&1 | tee "$OUT/sim.log"
 
 # ---- metrics.json a partir de eval_stats.txt ----
 python3 - "$OUT" <<'PY'

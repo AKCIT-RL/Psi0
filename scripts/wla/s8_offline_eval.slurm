@@ -18,4 +18,4 @@ OUT=${OUT:-$WLA_EXP/s8_offline_val3}; mkdir -p "$OUT"
 cp "$0" "$OUT/s8_offline_eval.slurm"
 cd "$WLA_REPO"; source .venv/bin/activate
 export PYTHONPATH="$OLDPWD/src:$WLA_REPO"
-python "$OLDPWD/scripts/wla/s8_offline_eval.py" --base --val_idx "${VAL_IDX:-12,24,27}" --out "$OUT" 2>&1 | tee "$OUT/eval.log"
+python "$OLDPWD/scripts/wla/s8_offline_eval.py" ${EXTRA:---base} --val_idx "${VAL_IDX:-12,24,27}" --out "$OUT" 2>&1 | tee "$OUT/eval.log"

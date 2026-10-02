@@ -40,6 +40,8 @@ ap.add_argument("--val_idx", default="12,24,27", help="índices na lista ordenad
 ap.add_argument("--stride", type=int, default=30)
 ap.add_argument("--base", action="store_true", help="inclui o WLA-Base como referência")
 ap.add_argument("--base_dir", default="/raid/user_marcospaulo/models/unifolm-wla/UnifoLM-WLA-1.0-Base")
+ap.add_argument("--img_swap", default=None, help="PNG BGR do simulador: substitui a imagem de todas as amostras (diagnóstico de gap visual)")
+ap.add_argument("--no_summary", action="store_true")
 ap.add_argument("--out", required=True)
 a = ap.parse_args()
 out = Path(a.out)
@@ -149,8 +151,14 @@ def run_model(name, ckpt, source, kind):
     o_a, s_a = np.array(st["action"]["offset"], np.float64), np.array(st["action"]["scale"], np.float64)
     o_s, s_s = np.array(st["state"]["offset"], np.float64), np.array(st["state"]["scale"], np.float64)
     ms = []
+    mot = []
     for i, x in enumerate(samples):
         ex = dict(x["example"])
+        if a.img_swap:
+            import cv2
+            from PIL import Image
+            im = cv2.cvtColor(cv2.imread(a.img_swap), cv2.COLOR_BGR2RGB)
+            ex["image"] = [Image.fromarray(cv2.resize(im, (448, 336), interpolation=cv2.INTER_LINEAR))]
         if kind == "base":  # estado/máscaras no perfil WBT; IMU (base_rot) não existe no dataset -> gravidade upright
             su = x["state_unnorm"].copy()
             su[STATE_SLICES["base_rotvec"]] = [0, 0, -1, 0, 0, 0]
@@ -158,7 +166,10 @@ def run_model(name, ckpt, source, kind):
             ex["state_mask"], ex["action_mask"] = state_mask(WBT), action_mask(WBT)
         with torch.no_grad():
             pred_n = np.asarray(model.predict_action([ex])["normalized_actions"][0], np.float64)
-        ms.append(metrics(pred_n * s_a + o_a, GT_UN[i], x["state_unnorm"]))
+        pu = pred_n * s_a + o_a
+        mot.append((np.ptp(pu[:, SLICES["right_xyz_rotvec"]][:, :3], 0).sum(), np.ptp(GT_UN[i][:, SLICES["right_xyz_rotvec"]][:, :3], 0).sum()))
+        ms.append(metrics(pu, GT_UN[i], x["state_unnorm"]))
+    print(f"  movimento relativo do braço dir. no chunk (m, soma ptp xyz): pred={np.mean([m[0] for m in mot]):.3f} GT={np.mean([m[1] for m in mot]):.3f}", flush=True)
     del model
     torch.cuda.empty_cache()
     results["models"][name] = {"overall": summarize(ms), "by_episode": per_episode(ms, name), "ckpt": str(ckpt)}

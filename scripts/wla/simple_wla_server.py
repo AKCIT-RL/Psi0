@@ -194,7 +194,8 @@ class Policy:
                      info["pos_err"].max(), info["converged"].mean())
         if self.args.debug_dir:
             np.savez(Path(self.args.debug_dir) / f"step_{self.steps:05d}.npz", state=s_un, pred_norm=pred, action=A,
-                     pos_err=info["pos_err"], rot_err=info["rot_err"])
+                     pos_err=info["pos_err"], rot_err=info["rot_err"],
+                     image=np.asarray(ex["image"][0], np.uint8), joint_qpos=np.asarray(req["state"]["joint_qpos"], np.float32).reshape(-1))
         return A.astype(np.float32)
 
 
