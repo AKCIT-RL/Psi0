@@ -112,12 +112,30 @@ class Policy:
         if args.oracle:
             return
         import torch
-        from examples.unifolm_wla.eval_files.unitree.eval_local_episode import load_model
+        from unifolm_wla.model.framework.base_framework import build_framework
+        from unifolm_wla.model.framework.share_tools import dict_to_namespace, read_mode_config
         self.torch = torch
-        self.device = torch.device("cuda:0")
-        self.model = load_model(Path(args.ckpt_path), args.base_vlm)
-        if args.use_bf16:
+        self.device = torch.device(args.device if args.device != "cuda" else "cuda:0")
+        # = eval_local_episode.load_model, com override opcional de atenção (CPU/dry-run: sdpa em vez de flash_attention_2)
+        model_config, norm_stats = read_mode_config(Path(args.ckpt_path))
+        if args.base_vlm:
+            model_config["framework"]["qwenvl"]["base_vlm"] = args.base_vlm
+        if args.device == "cpu":
+            model_config["framework"]["qwenvl"]["attn_implementation"] = "sdpa"
+        cfg = dict_to_namespace(model_config)
+        cfg.trainer.pretrained_checkpoint = None
+        self.model = build_framework(cfg=cfg)
+        self.model.norm_stats = norm_stats
+        if str(args.ckpt_path).endswith(".safetensors"):
+            from safetensors.torch import load_file
+            sd = load_file(str(args.ckpt_path))
+        else:
+            sd = torch.load(args.ckpt_path, map_location="cpu")
+        self.model.load_state_dict(sd, strict=True)
+        if args.use_bf16 and self.device.type == "cuda":
             self.model = self.model.to(torch.bfloat16)
+        elif self.device.type == "cpu":
+            self.model = self.model.float()  # dry-run em CPU (o código do WLA usa autocast("cuda"): só valida o caminho, não a velocidade)
         self.model = self.model.to(self.device).eval()
         src = args.source_name if args.source_name in self.model.norm_stats else next(iter(self.model.norm_stats))
         logging.info("norm source: %s (available: %s)", src, list(self.model.norm_stats))
@@ -221,6 +239,7 @@ def main():
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=22085)
     p.add_argument("--use_bf16", action="store_true")
+    p.add_argument("--device", default="cuda", choices=["cuda", "cpu"])
     p.add_argument("--oracle", choices=["raw", "adapter"])
     p.add_argument("--debug_dir")
     a = p.parse_args()

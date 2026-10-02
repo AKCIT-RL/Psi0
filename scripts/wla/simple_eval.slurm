@@ -55,7 +55,8 @@ curl -sf "http://127.0.0.1:$PORT/health" || { echo "servidor não subiu"; tail -
 # ---- simulador (container; código/ submódulos do nosso checkout por cima da imagem) ----
 BIND=(-B "$RAID:$RAID" -B "$SIMPLE/src:/workspace/simple/src" -B "$SIMPLE/third_party/gear_sonic:/workspace/simple/third_party/gear_sonic" -B "$SIMPLE/third_party/decoupled_wbc:/workspace/simple/third_party/decoupled_wbc")
 GL=${GL:-egl}; NV=(); [[ ${GPU:-1} == 1 ]] && NV=(--nv)   # GPU=0 -> job CPU (render por software, GL=osmesa)
-ENVV=(--env MUJOCO_GL=$GL --env PYOPENGL_PLATFORM=$GL --env HF_HUB_OFFLINE=1 --env OMNI_KIT_ACCEPT_EULA=Y --env SIMPLE_EVAL_EPISODE_ID= \
+# --nv injeta libs glvnd do host (glibc 2.39) que sombreiam as da imagem (2.35) -> 'GLIBC_2.38 not found'; priorizar as da imagem
+ENVV=(--env LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/.singularity.d/libs --env MUJOCO_GL=$GL --env PYOPENGL_PLATFORM=$GL --env HF_HUB_OFFLINE=1 --env OMNI_KIT_ACCEPT_EULA=Y --env SIMPLE_EVAL_EPISODE_ID= \
       --env WLA_EXEC_STEPS=${EXEC_STEPS:-30} ${ORACLE:+--env WLA_ORACLE_DIR=$ORACLE})
 apptainer exec "${NV[@]}" --cleanenv "${BIND[@]}" "${ENVV[@]}" --pwd /workspace/simple "$SB" \
   /workspace/simple/.venv/bin/eval-decoupled-wbc simple/G1WholebodyLocomotionPickTotesShelfToTableTeleop-v0 wla_decoupled_wbc "$SPLIT" \

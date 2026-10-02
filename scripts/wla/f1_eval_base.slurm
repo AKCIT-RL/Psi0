@@ -14,6 +14,8 @@ set -euo pipefail
 
 PSI0=/raid/user_marcospaulo/Psi0
 source "$PSI0/scripts/wla/env_raid.sh"
+module load cuda12.6/toolkit/12.6.3
+export CUDA_HOME=/cm/shared/apps/cuda12.6/toolkit/12.6.3
 
 DATA_CONFIG="$PSI0/configs/wla/unitree_wbt_shelf.yaml"
 EXP_DIR="$WLA_EXP/f1_eval_base"

@@ -20,6 +20,10 @@ set -uo pipefail
 
 PSI0=/raid/user_marcospaulo/Psi0
 source "$PSI0/scripts/wla/env_raid.sh"
+module load cuda12.6/toolkit/12.6.3
+export CUDA_HOME=/cm/shared/apps/cuda12.6/toolkit/12.6.3
+export PATH="$CUDA_HOME/bin:$PATH"
+export LD_LIBRARY_PATH="$CUDA_HOME/lib64:${LD_LIBRARY_PATH:-}"
 
 RUN_ROOT_DIR="$WLA_CKPT"
 RUN_ID=f1_smoke
