@@ -122,6 +122,8 @@ class Policy:
             model_config["framework"]["qwenvl"]["base_vlm"] = args.base_vlm
         if args.device == "cpu":
             model_config["framework"]["qwenvl"]["attn_implementation"] = "sdpa"
+        if args.attn_impl:  # ex.: sdpa quando flash-attn não está instalado (GPU de consumo, p.ex. 4090)
+            model_config["framework"]["qwenvl"]["attn_implementation"] = args.attn_impl
         cfg = dict_to_namespace(model_config)
         cfg.trainer.pretrained_checkpoint = None
         self.model = build_framework(cfg=cfg)
@@ -240,6 +242,7 @@ def main():
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=22085)
     p.add_argument("--use_bf16", action="store_true")
+    p.add_argument("--attn_impl", choices=["flash_attention_2", "sdpa", "eager"], help="override da atenção do VLM (padrão: o do config.yaml do checkpoint)")
     p.add_argument("--device", default="cuda", choices=["cuda", "cpu"])
     p.add_argument("--oracle", choices=["raw", "adapter"])
     p.add_argument("--debug_dir")
