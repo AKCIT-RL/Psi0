@@ -71,3 +71,6 @@ test.py
 unitree_sdk2_python
 
 src/h_rdt/datasets/pretrain/egodex_large_values.txt
+
+# imagem Apptainer: 12 GB, nao versionavel (limite de 100 MB por arquivo no GitHub)
+/sif_image/

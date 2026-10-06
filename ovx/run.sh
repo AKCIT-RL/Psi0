@@ -130,13 +130,17 @@ apptainer)
     command -v apptainer > /dev/null || die "apptainer not found"
 
     read -ra NV <<< "${OVX_NV_FLAGS:---nv}"
-    args=(exec "${NV[@]}" --cleanenv --no-home --pwd /home/ovx/Psi0
+    # --home, not --env HOME: apptainer refuses to override HOME through --env ("Overriding HOME
+    # environment variable ... is not permitted") and HOME silently stays the host's, which is not
+    # writable in here. --home both mounts and sets it, and replaces --no-home: only cache/home is
+    # mounted, so the real home -- dotfiles, .ssh -- stays out.
+    args=(exec "${NV[@]}" --cleanenv --pwd /home/ovx/Psi0
           "${SRC_APPTAINER[@]}"
           --bind "${DATA}:/home/ovx/data:ro"
           --bind "${CKPT}:/home/ovx/checkpoints"
           --bind "${CACHE}:/home/ovx/cache"
           --bind "${EVALS}:/home/ovx/evals"
-          --env HOME=/home/ovx/cache/home)
+          --home "${CACHE}/home:/home/ovx/cache/home")
     [ -z "${ENV_FILE}" ] || args+=(--env-file "${ENV_FILE}")
     for v in "${PASS_VARS[@]}"; do
         [ -z "${!v:-}" ] || args+=(--env "${v}=${!v}")

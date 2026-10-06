@@ -5,15 +5,13 @@ todos os problemas encontrados até agora (com causa e correção) e o que ainda
 OVX, com os sinais de cada falha e como investigar. O [README](../README.md) é o guia de uso; este
 é o guia para entender e depurar.
 
-Estado em 2026-09-14: branch `dev/mota` (commit base `f5796a5`, mudanças em `ovx/` ainda não
-commitadas), SIMPLE em `industrial_env` `4bb2ff9`. A imagem `ovx-gr00t:eval` passou nos 12 checks
-do smoke com Docker **e** com Apptainer numa RTX 5060 Laptop (driver 580.159.04, Ubuntu 24.04).
-Treino e eval de verdade ainda não foram executados.
-
-> **A imagem publicada está defasada.** `gstvmt/teleop_ovx_train_image:eval` foi construída com o
-> layout antigo (código em `/opt/psi0`, dados em `/data`, `/checkpoints`, `/cache`, `/evals`). Esta
-> árvore já usa `/home/ovx` para tudo e **não funciona com aquela imagem**: os scripts procuram
-> `/home/ovx/...`. É preciso reconstruir e publicar uma tag nova antes de usar na OVX.
+Estado em 2026-09-22: branch `dev/mota` (commit base `f5796a5`, mudanças em `ovx/` ainda não
+commitadas), SIMPLE em `industrial_env` `4bb2ff9`. A imagem `2026.09.20-f5796a5-dirty` passou nos
+12 checks do smoke com Docker **e** com Apptainer numa RTX 5060 Laptop (driver 580.159.04,
+Ubuntu 24.04), incluindo o boot headless do Isaac Sim. Ela está publicada em
+`gstvmt/teleop_ovx_train_image:eval` e existe também como `.sif` de 12 GB, para subir por `rsync`
+em vez de converter do lado da OVX. O treino chega até a carga dos pesos do modelo base; treino e
+eval completos ainda não rodaram.
 
 ---
 
@@ -192,10 +190,13 @@ cuda-toolkit (nvidia/cuda:12.8.1-devel, só para copiar o nvcc para o estágio c
 | `OVX_ENV_FILE` | `.env` se existir | segredos |
 | `OVX_NV_FLAGS` | `--nv` | flags de GPU do Apptainer |
 
-Com Apptainer: `exec --nv --cleanenv --no-home --pwd /home/ovx/Psi0`, os cinco binds e
-`--env HOME=/home/ovx/cache/home`. `--cleanenv` corta **todas** as variáveis do host (foi o que fez o
-`TRITON_CACHE_DIR` do seu `.bashrc` quebrar o primeiro treino); só passam o `.env`, `HOME`,
-`CUDA_VISIBLE_DEVICES`, `SLURM_JOB_ID` e `SLURM_ARRAY_TASK_ID`. Se `OVX_NV_FLAGS` contiver
+Com Apptainer: `exec --nv --cleanenv --pwd /home/ovx/Psi0`, os cinco binds e
+`--home "${CACHE}/home:/home/ovx/cache/home"`. O `--home` está no lugar de `--env HOME=`, que o
+Apptainer **recusa** (*"Overriding HOME environment variable ... is not permitted"*): com `--env`, o
+`HOME` fica silenciosamente valendo o do host, que não é gravável aqui dentro. Ele também substitui
+o `--no-home` — monta apenas o `cache/home`, então a home real continua fora (nem `.bashrc` nem
+`.ssh` aparecem). `--cleanenv` corta **todas** as variáveis do host; só passam o `.env`,
+`CUDA_VISIBLE_DEVICES`, `SLURM_JOB_ID`, `SLURM_ARRAY_TASK_ID` e `SLURMD_NODENAME`. Se `OVX_NV_FLAGS` contiver
 `--nvccli`, o script fixa `NVIDIA_VISIBLE_DEVICES` nas GPUs do SLURM (senão o `--nvccli` expõe
 todas as GPUs do nó).
 
@@ -606,6 +607,16 @@ executa; use o truque do colchete (`pkill -f "[d]ocker buildx"`).
   barata é `tyro.cli(..., default=<instância>)`, que funciona e mantém a CLI sobrescrevendo, mas
   não amplia o alcance. As duas exigem editar `baselines/gr00t-n1.7/launch_finetune_n1d7_inner.py`,
   que é código do repositório, fora de `ovx/`.
+- **Separar a home do cache** (anotado em 2026-09-22; hoje funciona, é questão de desenho). O
+  `run.sh` usa `--home "${CACHE}/home:/home/ovx/cache/home"`, então a home do container mora dentro
+  do diretório de cache. Isso junta duas preocupações distintas: limpar o cache — coisa rotineira
+  quando o disco aperta — apaga junto o que tiver caído na home. O desenho mais limpo é um bind
+  próprio (`OVX_HOME` → `/home/ovx/home`), independente do `OVX_CACHE`.
+  Para quem for mexer: o `--home` existe porque o Apptainer **recusa** `--env HOME=` (*"Overriding
+  HOME environment variable ... is not permitted"*), e `--bind` sozinho monta mas não define a
+  variável; `--home <origem>:<destino>` faz as duas coisas. Não confundir com risco de quebrar
+  software: `HOME` gravável é o caso normal, e o estado anterior — `HOME` na raiz somente leitura —
+  é que era o perigoso. Nada disso exige rebuild: `run.sh` roda no host e o `common.sh` vem do bind.
 - Compilar a wheel do cuRobo uma vez e guardá-la como artefato, tirando o toolkit CUDA do build (~21 GB de cache a menos).
 - Unificar o torch das duas venvs (~5–6 GB a menos) quando migrarmos para o GR00T oficial da NVIDIA (torch 2.7 + CUDA 12.8), com teste de paridade.
 - `--push` no `build.sh` para o Docker Hub (repositório **privado**: a imagem contém código privado da
