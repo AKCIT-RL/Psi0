@@ -1,0 +1,4 @@
+#!/bin/sh
+# Not a compiler: only answers `nvcc -V`, which deepspeed runs at import. Temporary, until the image
+# ships a real nvcc -- see gr00t_env in ovx/bin/common.sh and ovx/docs/guia-tecnico.md (7.3, 12).
+echo "Cuda compilation tools, release 13.0, V13.0.0 (ovx stub: no CUDA toolkit in the image)"

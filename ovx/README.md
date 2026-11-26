@@ -169,6 +169,10 @@ alcance exige mexer no launcher do repositório, e está adiado — ver a seçã
 
 ## Pontos de atenção
 
+- **`nvcc` falso, temporário**: a imagem não tem toolkit CUDA, e o deepspeed exige um `nvcc` já no
+  `import`. O `gr00t_env` aponta `CUDA_HOME` para `ovx/bin/cuda_home/`, que só responde ao `nvcc -V`.
+  Isso basta para 1 GPU ou várias com DDP. Várias GPUs **sem** DDP usam o deepspeed ZeRO e pedem o
+  rebuild pendente (guia técnico, seções 7.3 e 12).
 - **Primeira execução do Isaac**: leva uns 5 minutos compilando os shaders RTX. O resultado fica
   em `/home/ovx/cache/isaac` (o `OVX_CACHE` do host) e as execuções seguintes reaproveitam. Na OVX, deixe o
   `OVX_CACHE` fixo no `/raid` para só o primeiro job de eval pagar esse custo.

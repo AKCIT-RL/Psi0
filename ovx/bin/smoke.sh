@@ -106,6 +106,7 @@ check "gr00t: model, trainer and server code" gpy -c '
 import gr00t.model.gr00t_n1d7.gr00t_n1d7
 import gr00t.experiment.experiment
 import gr00t.deploy.gr00t_serve_simple
+import deepspeed   # accelerate imports it inside the Trainer; needs CUDA_HOME
 import wandb
 print("wandb", wandb.__version__)'
 

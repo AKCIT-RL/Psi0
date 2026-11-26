@@ -50,6 +50,12 @@ gr00t_env() {
     export TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
     export NO_ALBUMENTATIONS_UPDATE=1   # otherwise every import phones home for a version check
     export OMP_NUM_THREADS="${OMP_NUM_THREADS:-8}"
+    # deepspeed (imported by accelerate whenever it is installed, even on one GPU) asks nvcc for the
+    # CUDA version at import and aborts without a toolkit, which the image does not ship. The stub
+    # answers with the CUDA of the torch wheel (cu130); it compiles nothing, so an op that needs
+    # JIT compilation still fails, loudly. Temporary: the next image rebuild ships a real nvcc and
+    # removes this (ovx/docs/guia-tecnico.md, sections 7.3 and 12).
+    export CUDA_HOME="${CUDA_HOME:-${PSI0_ROOT}/ovx/bin/cuda_home}"
 }
 
 # Environment for the SIMPLE venv. Nothing from the GR00T side may leak in. Importing isaacsim

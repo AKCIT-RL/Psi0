@@ -13,6 +13,13 @@ Ubuntu 24.04), incluindo o boot headless do Isaac Sim. Ela está publicada em
 em vez de converter do lado da OVX. O treino chega até a carga dos pesos do modelo base; treino e
 eval completos ainda não rodaram.
 
+**Atualização 2026-11-26.** Na OVX (nó `ovx-l40s-01`, L40S, driver 580.159.03), pelo
+`ovx/slurm/validate.sbatch`, a mesma imagem passou no preflight e nos 12 checks do smoke, incluindo
+o Isaac (456 s no primeiro boot, 87 s com o cache). Os dois primeiros treinos reais caíram antes do
+primeiro passo, por defeitos do pipeline e não da imagem: o dataset montado somente leitura e o
+deepspeed sem `CUDA_HOME` (seção 7.3). Os dois foram corrigidos sem rebuild. O do deepspeed é uma
+**adaptação**, com o rebuild que a remove pendente (seção 12).
+
 ---
 
 ## 1. Visão geral
@@ -112,6 +119,9 @@ cuda-toolkit (nvidia/cuda:12.8.1-devel, só para copiar o nvcc para o estágio c
   O servidor importa `psi.deploy.helpers` (o formato das mensagens). `psi.deploy` não tem
   `__init__.py` (é *namespace package*) — o primeiro build falhou por eu tentar copiar um arquivo
   que não existe.
+- **Sem toolkit CUDA** (`nvcc`, headers): a venv traz só as bibliotecas de runtime das wheels. Isso
+  basta para treinar, mas o deepspeed exige um `nvcc` já no `import` (seção 7.3). Enquanto a imagem
+  não traz um, o `gr00t_env` aponta `CUDA_HOME` para um `nvcc` falso em `ovx/bin/cuda_home/`.
 
 ### 2.3 `simple-deps`
 
@@ -412,6 +422,22 @@ e cada build refaz tudo. Não é bug do Dockerfile.
 | W&B 401/404 | `WANDB_ENTITY` no `.env`; o `train.sh` recusa começar sem `WANDB_API_KEY` |
 | `uv sync` reescrevendo o `uv.lock` | `--frozen` no build; ninguém roda uv no host |
 
+### 7.3 Nos primeiros treinos com a imagem na OVX (novembro/2026)
+
+Jobs `7692` e `7890` do `validate.sbatch`, no `carry_totes`. Os dois passaram preflight e smoke e
+caíram no treino antes do primeiro passo. Nenhum dos dois aparecia nos testes locais, porque nenhum
+treino real tinha rodado (a GPU de 8 GB não comporta o modelo).
+
+| # | Sintoma | Causa | Correção |
+|---|---|---|---|
+| 14 | `OSError: [Errno 30] Read-only file system: '/home/ovx/data/carry_totes/meta/relative_stats.json'` | no início de **todo** treino o GR00T grava `meta/stats.json` e `meta/relative_stats.json` dentro do dataset (`gr00t/data/stats.py`); o `relative_stats.json` é regravado mesmo quando já existe e está completo. O `run.sh` montava `OVX_DATA` somente leitura | `d11431a`: montagem com escrita. O conteúdo regravado é o mesmo; o setup antigo já gravava esses arquivos |
+| 15 | `deepspeed...MissingCUDAException: CUDA_HOME does not exist, unable to compile CUDA op(s)`, a partir de `transformers.Trainer.__init__` → `accelerate.unwrap_model` → `import deepspeed` | o accelerate importa o deepspeed sempre que ele está instalado, **mesmo com 1 GPU**, quando o deepspeed nem é usado. Na importação, o deepspeed 0.17.1 verifica a compatibilidade de cada operação e roda `$CUDA_HOME/bin/nvcc -V`; a imagem não tem toolkit CUDA. O smoke não importava o deepspeed | **adaptação, sem rebuild**: `ovx/bin/cuda_home/bin/nvcc` responde só ao `-V` (release 13.0, o CUDA do torch) e o `gr00t_env` exporta `CUDA_HOME` para ele, sem sobrescrever um `CUDA_HOME` já definido. O check `model, trainer and server code` do smoke passou a importar o deepspeed. Reproduzido e verificado localmente com o mesmo `.sif` e `--nv`. A correção definitiva está na seção 12 |
+
+**Limite da adaptação.** O `nvcc` falso não compila nada. Com 1 GPU, ou com várias e DDP, isso não
+importa: o deepspeed só é importado. Com mais de 1 GPU **sem** DDP, o GR00T usa o deepspeed ZeRO
+(`experiment.py`: `num_gpus > 1 and not use_ddp`), que pode compilar operações em tempo de execução,
+e aí a compilação falha com um erro explícito do `nvcc`. Isso não acontece em silêncio.
+
 ---
 
 ## 8. O que foi testado
@@ -440,11 +466,13 @@ mesmo (raiz somente leitura, `--nv`, `--cleanenv`); só o empacotamento difere.
 
 ## 9. O que NÃO foi testado
 
-- **Treino real** (a GPU de 8 GB não comporta o modelo de 3B) — nem curto.
+- **Treino real até o fim** (a GPU de 8 GB não comporta o modelo de 3B). Na OVX, os dois primeiros
+  treinos caíram antes do primeiro passo (seção 7.3); o primeiro com as duas correções ainda não rodou.
 - **Servidor com checkpoint real** e **eval em malha fechada** (sem checkpoint nem dataset aqui).
-- **Qualquer coisa na OVX**: SLURM, cota, `/raid`, rede dos nós, L40, múltiplas GPUs, versão do
-  Apptainer de lá, `apptainer pull` de repositório privado.
-- **O `.sif` em si** (só a sandbox).
+- **Na OVX, ainda falta**: múltiplas GPUs (com o deepspeed ZeRO, ver o limite em 7.3) e o
+  `apptainer pull` de repositório privado (o `.sif` foi levado por `rsync`). Já funcionaram lá:
+  SLURM, `/raid` e a cota, a internet do nó (HF e PyPI), a L40S, o Apptainer com `--nv`, o `.sif`, o
+  smoke inteiro e o treino até a montagem do Trainer.
 - **Downloads em tempo de execução**: Cosmos no HF, assets do SIMPLE (`USC-PSI-Lab/SIMPLE` no HF) e
   assets remotos do Isaac.
 
@@ -523,6 +551,9 @@ modelo base) e o processor na raiz do run.
 | OOM | batch alto para a GPU | `--batch-size`, ou mantenha o gradient checkpointing |
 | W&B 401/404 | chave errada, ou entity de organização em vez de time | `WANDB_ENTITY=akcit_industrial_humanoids` |
 | loss muito diferente do antigo | versão, config ou dataset diferente | compare `<run>/ovx_runs.jsonl` e `experiment_cfg/` com o run antigo |
+| `Read-only file system: .../meta/relative_stats.json` | clone anterior a `d11431a` (dados montados somente leitura) | `git pull`; seção 7.3 |
+| `MissingCUDAException: CUDA_HOME does not exist` | clone sem `ovx/bin/cuda_home/`, ou `CUDA_HOME` apontando para um caminho que não existe no container | `git pull`; `ls ovx/bin/cuda_home/bin/nvcc`; seção 7.3 |
+| erro do `nvcc` compilando uma operação do deepspeed | várias GPUs sem DDP usam o ZeRO, e o `nvcc` da imagem é falso | treinar com DDP, ou fazer o rebuild da seção 12 |
 
 ### Etapa 5 — eval curto
 
@@ -575,6 +606,21 @@ executa; use o truque do colchete (`pkill -f "[d]ocker buildx"`).
 
 ## 12. Pendências conhecidas
 
+- **TODO — rebuild da imagem com um `nvcc` real** (remove a adaptação da seção 7.3). O que fazer:
+  1. No estágio `gr00t` do Dockerfile, instalar o compilador do CUDA 13, compatível com o torch
+     `cu130`. Pelo repositório apt da NVIDIA (`cuda-nvcc-13-0`, mais os headers de runtime,
+     `cuda-cudart-dev-13-0`, para quando houver compilação de verdade) é o caminho mais testado para
+     a compilação JIT do deepspeed. A alternativa pelo pip, na venv, precisaria ser verificada.
+  2. `ENV CUDA_HOME=<caminho do toolkit>` na imagem.
+  3. Apagar `ovx/bin/cuda_home/` e o `export CUDA_HOME` do `gr00t_env` (`ovx/bin/common.sh`).
+  4. Manter o `import deepspeed` no smoke, que passa a cobrir o caminho real. Para cobrir também a
+     compilação, acrescentar ao smoke um build JIT de uma operação pequena, como o `FusedAdamBuilder().load()`.
+  5. Validar com um treino de 2 GPUs **sem** DDP, o único caso em que a adaptação não basta.
+
+  Quando fazer: no próximo rebuild por qualquer motivo (B200/sm_100 no cuRobo, a wheel do cuRobo
+  como artefato, troca de dependência), ou antes do primeiro treino com várias GPUs sem DDP.
+  Sozinho, não compensa: o build, o push de ~14 GB e um `.sif` novo na OVX, para trocar algo que
+  funciona.
 - Agente de eval para as tarefas de mão fixa (`G1FixedHand*`).
 - `evals.example.tsv`: conferir o env id de cada dataset (o de `carry_totes` é palpite) e o `--sim-mode`.
 - Estado de torso congelado nos agentes decoupled: correto para tarefas sem agachar (`rpy≈0`,
