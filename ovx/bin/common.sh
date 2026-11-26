@@ -5,7 +5,7 @@
 # metadata). ovx/run.sh decides which host directory lands on each mount point:
 #
 #   /home/ovx/Psi0          the code: a checkout mounted over the copy baked into the image
-#   /home/ovx/data          LeRobot datasets, one directory per dataset       (read-only)
+#   /home/ovx/data          LeRobot datasets, one directory per dataset (GR00T writes meta/*stats.json)
 #   /home/ovx/checkpoints   base models and training runs
 #   /home/ovx/cache         HF, torch, triton, wandb and Isaac Sim caches
 #   /home/ovx/evals         evaluation outputs

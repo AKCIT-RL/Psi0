@@ -136,7 +136,9 @@ apptainer)
     # mounted, so the real home -- dotfiles, .ssh -- stays out.
     args=(exec "${NV[@]}" --cleanenv --pwd /home/ovx/Psi0
           "${SRC_APPTAINER[@]}"
-          --bind "${DATA}:/home/ovx/data:ro"
+          # Writable: GR00T writes meta/stats.json and meta/relative_stats.json into the dataset
+          # at the start of every training (gr00t/data/stats.py), even when they already exist.
+          --bind "${DATA}:/home/ovx/data"
           --bind "${CKPT}:/home/ovx/checkpoints"
           --bind "${CACHE}:/home/ovx/cache"
           --bind "${EVALS}:/home/ovx/evals"
@@ -164,7 +166,7 @@ docker)
           -e HOME=/home/ovx/cache/home -e USER=ovx -e LOGNAME=ovx
           -w /home/ovx/Psi0
           "${SRC_DOCKER[@]}"
-          -v "${DATA}:/home/ovx/data:ro"
+          -v "${DATA}:/home/ovx/data"
           -v "${CKPT}:/home/ovx/checkpoints"
           -v "${CACHE}:/home/ovx/cache"
           -v "${EVALS}:/home/ovx/evals")

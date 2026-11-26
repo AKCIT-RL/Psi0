@@ -27,7 +27,7 @@ host                                   container
 driver NVIDIA (libcuda, libGLX…)   ──▶ injetado por --nv (Apptainer) / --gpus (Docker)
 OVX_SRC     clone do Psi0          ──▶ /home/ovx/Psi0          código: GR00T, SIMPLE, submódulos e
                                                                os scripts ovx/bin (leitura e escrita)
-OVX_DATA    datasets LeRobot       ──▶ /home/ovx/data          (somente leitura)
+OVX_DATA    datasets LeRobot       ──▶ /home/ovx/data          (escrita: o GR00T grava meta/*stats.json)
 OVX_CKPT    modelos base e runs    ──▶ /home/ovx/checkpoints
 OVX_CACHE   HF, torch, triton,     ──▶ /home/ovx/cache
             wandb, Isaac, HOME

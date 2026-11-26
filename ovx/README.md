@@ -34,7 +34,7 @@ necessário.
 
 | Host (variável, padrão) | Container |
 |---|---|
-| `OVX_DATA` (`data/simple/simple-converted`) | `/home/ovx/data`, somente leitura |
+| `OVX_DATA` (`data/simple/simple-converted`) | `/home/ovx/data`, com escrita: o treino grava `meta/stats.json` e `meta/relative_stats.json` |
 | `OVX_CKPT` (`checkpoints`) | `/home/ovx/checkpoints` |
 | `OVX_CACHE` (`cache`) | `/home/ovx/cache`: HF, torch, triton, wandb, Isaac |
 | `OVX_EVALS` (`evals`) | `/home/ovx/evals` |
