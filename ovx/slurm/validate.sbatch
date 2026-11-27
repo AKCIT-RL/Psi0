@@ -10,8 +10,9 @@
 #
 # Options:
 #   --base-model DIR   required; relative to OVX_CKPT, as for train.sbatch
-#   --dataset NAME     default screws (a directory under OVX_DATA)
-#   --env-id ID        default simple/G1IndustrialScrewToToteTeleop-v0 (must match --dataset)
+#   --dataset NAME     default carry_totes (a directory under OVX_DATA)
+#   --env-id ID        default simple/G1IndustrialSortingTeleop-v0, the task the subtask datasets
+#                      (screws, screwdrivers, carry_totes) were cut from; its success is 0 on them
 #   --max-steps N      default 200
 #
 # Logs: logs/ovx-validate-<jobid>.out (everything) and logs/ovx-validate-<jobid>/<stage>.log.
@@ -32,7 +33,7 @@ cd "${SLURM_SUBMIT_DIR:?submit this with sbatch}"
 [ -n "${OVX_SIF:-}" ] || { echo "OVX_SIF is not set -- export it before sbatch"; exit 1; }
 export OVX_ENGINE=apptainer   # never fall back to docker on the cluster
 
-BASE_MODEL=""; DATASET=screws; ENV_ID=simple/G1IndustrialScrewToToteTeleop-v0; MAX_STEPS=200
+BASE_MODEL=""; DATASET=carry_totes; ENV_ID=simple/G1IndustrialSortingTeleop-v0; MAX_STEPS=200
 while [ $# -gt 0 ]; do
     case "$1" in
         --base-model) BASE_MODEL="$2"; shift 2 ;;

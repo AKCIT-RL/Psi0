@@ -5,8 +5,12 @@
 # /home/ovx/data whose
 # episodes provide the starting states. Prefer held-out episodes that were not used in training.
 #
-# CHECK BEFORE USE: the env id of each dataset (carry_totes in particular) and --sim-mode, which
-# must match the renderer the training videos came from (mujoco or mujoco_isaac).
+# CHECK BEFORE USE: the env ids below are single-object tasks, a different scene from these
+# datasets. carry_totes, screwdrivers and screws are cuts of G1IndustrialSortingTeleop, and their
+# episodes reset that scene: they only run with --env-id simple/G1IndustrialSortingTeleop-v0, whose
+# success counts the whole task, so it reads 0 for a subtask specialist until a subtask success
+# criterion exists. Also check --sim-mode, which must match the renderer the training videos came
+# from (mujoco or mujoco_isaac).
 
 --model gr00t_n1d7_finetune_output_carry_totes   --env-id simple/G1IndustrialToteToRackTeleop-v0        --data-dir carry_totes
 --model gr00t_n1d7_finetune_output_screwdrivers  --env-id simple/G1IndustrialScrewdriverToToteTeleop-v0 --data-dir screwdrivers

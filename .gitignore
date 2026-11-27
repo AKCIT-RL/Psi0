@@ -74,3 +74,6 @@ src/h_rdt/datasets/pretrain/egodex_large_values.txt
 
 # imagem Apptainer: 12 GB, nao versionavel (limite de 100 MB por arquivo no GitHub)
 /sif_image/
+
+# ovx/slurm/train_eval.sh configs: per-user paths and experiments
+ovx/slurm/train_eval*.env

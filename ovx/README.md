@@ -17,6 +17,9 @@ dados, os checkpoints, os caches e os segredos. Nenhuma venv do host entra no co
 O Ubuntu 24.04 é o mesmo dos hosts da OVX, então `--nv` puro funciona e o `--nvccli` não é
 necessário.
 
+**Primeira vez submetendo jobs na OVX?** Comece pelo [tutorial](docs/tutorial-jobs.md): ele cobre a
+preparação, os comandos, como acompanhar a fila e onde ficam os resultados.
+
 ## Arquivos
 
 | Caminho | O que é |
@@ -28,6 +31,8 @@ necessário.
 | `bin/*.sh` | rodam **dentro** do container: `smoke`, `train`, `serve`, `eval` |
 | `run.sh` | launcher do **host**: monta os diretórios e chama `bin/<comando>.sh` |
 | `slurm/{train,eval}.sbatch` | wrappers finos do `run.sh` para a OVX, em lote |
+| `slurm/train_eval.sh` + `train_eval.env.example` | uso diário: treino e eval do modelo num só job, configurados num arquivo |
+| `slurm/validate.sbatch` | validação do pipeline num cluster novo: preflight, smoke, treino curto e eval |
 | `slurm/session.sh` + `slurm/attach.sh` | sessão interativa (`salloc`): uma alocação, vários terminais |
 
 ## Diretórios
@@ -92,6 +97,72 @@ Com 24 GB, a 4090 pode não comportar o treino completo com batch 16. O teste aq
 funcionamento, não de desempenho.
 
 ## 3. Na OVX
+
+### 3.1 Preparar o clone: arquivos do Git LFS do SIMPLE
+
+O `run.sh` monta o clone por cima do código da imagem, então o clone precisa ter os 229 arquivos
+do LFS do SIMPLE (meshes e texturas das cenas, ~40 MB). A OVX não tem `git-lfs`, e o clone fica
+só com os ponteiros. Sem eles, o eval quebra ao montar a cena, com
+`ValueError: Error: at least 4 vertices required`. Treino e smoke funcionam sem eles, por isso o
+erro só aparece no eval.
+
+Os arquivos vão por `rsync` a partir de uma máquina com `git-lfs`, **com o SIMPLE no mesmo commit**:
+
+```bash
+# local
+cd Psi0/third_party/SIMPLE
+git lfs pull && git rev-parse --short HEAD          # anote o commit
+git lfs ls-files -n > /tmp/simple-lfs.txt
+rsync -avP --files-from=/tmp/simple-lfs.txt ./ <ovx>:<clone>/third_party/SIMPLE/
+
+# na OVX
+cd <clone>/third_party/SIMPLE
+git rev-parse --short HEAD                          # o mesmo commit
+lfs_files() { git ls-files | git check-attr --stdin filter | sed -n 's/: filter: lfs$//p'; }
+lfs_files | xargs git update-index --skip-worktree  # o git sem LFS veria os arquivos como modificados
+lfs_files | xargs grep -l '^version https://git-lfs' | wc -l   # 0: nenhum ponteiro sobrando
+lfs_files | xargs sha256sum | sha256sum             # igual ao mesmo comando rodado no local
+```
+
+O `skip-worktree` mantém o `git status` limpo e o SIMPLE sem a marca `-dirty` na rastreabilidade.
+**Antes de trocar o commit do SIMPLE** no clone da OVX, desfaça a marcação, ou o checkout se recusa a
+sobrescrever os arquivos. Depois repita o `rsync` e a marcação:
+
+```bash
+lfs_files | xargs git update-index --no-skip-worktree
+```
+
+`OVX_SRC=image` dispensa tudo isso, porque usa o código da imagem, que já leva os arquivos. Em
+troca, mudanças no clone não chegam ao job.
+
+### 3.2 Uso diário: treino e eval encadeados
+
+```bash
+cp ovx/slurm/train_eval.env.example ovx/slurm/train_eval.env   # uma vez; fica no .gitignore
+# edite: caminhos da OVX (uma vez), dataset, modelo base, opções de treino e de eval
+ovx/slurm/train_eval.sh                       # ou: ovx/slurm/train_eval.sh outro_experimento.env
+```
+
+- **O que acontece:** o script submete **um job** que treina e, em seguida, avalia o modelo
+  treinado. A GPU passa direto de uma etapa para a outra, sem o eval esperar de novo na fila. O eval
+  só roda se o treino terminar bem.
+- **Recursos padrão:** 1 GPU, 32 CPUs, 128 GB e 54 h. Para mudar, use `SBATCH_ARGS` na config.
+- **O que ele imprime:** o nome do run, o job, o log (`logs/ovx-train-eval-<job>.out`) e onde ficam o
+  modelo e o eval.
+- **A config é congelada na submissão:** o script copia a config para `logs/train-eval-<run>.env`, e
+  o job lê essa cópia. Editar a config depois não muda um job que já está na fila.
+- **Para refazer só o eval,** ou avaliar outro modelo: `eval.sbatch`.
+- **Nome do run:** sem `RUN_NAME`, é `<dataset>_<data-hora>`. Um nome que já existe **retoma**
+  aquele run.
+- **Por que a config fica fora do git:** editá-la não marca os runs como `-dirty`. Para que o
+  experimento seja reproduzível, ponha os hiperparâmetros num YAML versionado e passe `--config` em
+  `TRAIN_ARGS`. O conteúdo do YAML fica registrado no `ovx_runs.jsonl`.
+- **O job lê o código quando começa, não quando é submetido.** Uma edição ou um `git pull` no clone,
+  feitos com jobs seus ainda na fila, entram neles. Para congelar o código, aponte `OVX_SRC` para um
+  snapshot (`git worktree add ../Psi0_snap HEAD`), lembrando que ele também precisa dos arquivos do
+  LFS (3.1).
+
+### 3.3 Vários datasets de uma vez
 
 ```bash
 mkdir -p logs
@@ -169,6 +240,13 @@ alcance exige mexer no launcher do repositório, e está adiado — ver a seçã
 
 ## Pontos de atenção
 
+- **Eval quebrado sai com código 0**: quando o `eval-decoupled-wbc` quebra depois de abrir o Isaac,
+  o encerramento do Isaac engole o erro e o processo termina com 0. O job aparece como sucesso. Confira
+  se `<saída>/eval_stats.txt` existe e procure `Traceback` no log (guia técnico, seção 12).
+- **Datasets de subtarefa** (`screws`, `screwdrivers`, `carry_totes`): são cortes do
+  `G1IndustrialSortingTeleop`, e o estado inicial de cada episódio é uma cena dessa tarefa. Para eval,
+  use `--env-id simple/G1IndustrialSortingTeleop-v0`. O sucesso dá 0, porque essa tarefa só conta a
+  tarefa inteira. Os env ids de tarefa única (`ScrewToTote` etc.) são outras cenas.
 - **`nvcc` falso, temporário**: a imagem não tem toolkit CUDA, e o deepspeed exige um `nvcc` já no
   `import`. O `gr00t_env` aponta `CUDA_HOME` para `ovx/bin/cuda_home/`, que só responde ao `nvcc -V`.
   Isso basta para 1 GPU ou várias com DDP. Várias GPUs **sem** DDP usam o deepspeed ZeRO e pedem o

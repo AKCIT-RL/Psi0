@@ -20,6 +20,15 @@ primeiro passo, por defeitos do pipeline e não da imagem: o dataset montado som
 deepspeed sem `CUDA_HOME` (seção 7.3). Os dois foram corrigidos sem rebuild. O do deepspeed é uma
 **adaptação**, com o rebuild que a remove pendente (seção 12).
 
+**Atualização 2026-11-27: pipeline validado de ponta a ponta na OVX, com o clone montado.**
+- O job `7928` do `validate.sbatch` passou no preflight e no smoke e completou o treino: 4000
+  passos do `carry_totes` em 38 min, a 1,75 passos/s, com 32 amostras por passo, a partir de um
+  especialista N1.7. Os checkpoints foram salvos.
+- O eval desse job quebrou ao montar a cena, porque faltavam no clone da OVX os arquivos do LFS do
+  SIMPLE (item 16).
+- Depois do `rsync` desses arquivos, o eval de 1 episódio no `G1IndustrialSortingTeleop` rodou até
+  o fim, com o servidor e o Isaac na mesma L40S.
+
 ---
 
 ## 1. Visão geral
@@ -305,6 +314,27 @@ os downloads do cache de build (ver seção 6).
 - **`eval.sbatch`** — 1 GPU, 16 CPUs, 64 GB, 6 h. Com `EVAL_SPEC`, a tarefa *i* pega os argumentos
   da linha *i* do arquivo (ver `evals.example.tsv`). Encadeamento: `--dependency=aftercorr:<treino>`
   faz o eval *i* começar quando o treino *i* termina com sucesso.
+- **`train_eval.sh`** — o uso diário (README, seção 3.2). Roda no shell de login e submete a si
+  mesmo.
+  - **Um job, não dois encadeados.** Com dois, o eval só entra na disputa da fila quando o treino
+    termina, e na OVX isso pode levar dias. Num job só, a GPU segue direto para o eval. O custo é que
+    o job reserva o tempo das duas etapas.
+  - **Na submissão,** o script lê a config em bash (`train_eval.env`, a partir do `.example`) com
+    `set -a`, para que as variáveis `OVX_*` cheguem ao job pelo ambiente do `sbatch` (`--export=ALL`,
+    o padrão). Depois congela uma cópia em `logs/train-eval-<run>.env` e chama
+    `sbatch ... train_eval.sh --in-job <cópia>`.
+  - **Dentro do job,** o script recarrega a cópia congelada e roda `train.sbatch` e `eval.sbatch` como
+    subprocessos, aproveitando a checagem de cota e os logs deles. Com `set -e`, uma falha no treino
+    encerra o job antes do eval.
+  - **Por que o `--in-job` explícito, e não "`SLURM_JOB_ID` definido":** dentro de uma sessão
+    interativa a variável também existe.
+  - O nome padrão do run tem data e hora porque o padrão do `train.sh`,
+    `gr00t_n1d7_finetune_output_<dataset>`, retomaria um run antigo do mesmo dataset.
+  - As configs (`train_eval*.env`) ficam no `.gitignore`: editá-las não deve marcar os runs como
+    `-dirty`.
+- **`validate.sbatch`** — num job só: preflight (driver, internet, chaves, cota, caminhos vistos pelo
+  container), smoke com Isaac, treino curto e eval de 1 episódio do modelo treinado. Cada estágio
+  grava um log em `logs/ovx-validate-<jobid>/`, e a última linha do job é o resumo.
 - **`session.sh`** + **`attach.sh`** — sessão interativa, fora do lote. O `session.sh` é um
   `salloc` seguido de `srun --pty` (o `salloc` sozinho roda o comando no nó de **login**; é o `srun`
   que põe o shell no nó alocado). A alocação dura o que durar o comando — para atravessar uma queda
@@ -424,14 +454,20 @@ e cada build refaz tudo. Não é bug do Dockerfile.
 
 ### 7.3 Nos primeiros treinos com a imagem na OVX (novembro/2026)
 
-Jobs `7692` e `7890` do `validate.sbatch`, no `carry_totes`. Os dois passaram preflight e smoke e
-caíram no treino antes do primeiro passo. Nenhum dos dois aparecia nos testes locais, porque nenhum
-treino real tinha rodado (a GPU de 8 GB não comporta o modelo).
+Jobs `7692`, `7890` e `7928` do `validate.sbatch`, no `carry_totes`. Os dois primeiros passaram
+preflight e smoke e caíram no treino antes do primeiro passo (itens 14 e 15). O terceiro treinou até
+o fim e caiu no eval (item 16). Nenhum dos três problemas aparecia nos testes locais: nenhum treino
+real tinha rodado (a GPU de 8 GB não comporta o modelo), e o eval local usava um clone com o LFS.
 
 | # | Sintoma | Causa | Correção |
 |---|---|---|---|
 | 14 | `OSError: [Errno 30] Read-only file system: '/home/ovx/data/carry_totes/meta/relative_stats.json'` | no início de **todo** treino o GR00T grava `meta/stats.json` e `meta/relative_stats.json` dentro do dataset (`gr00t/data/stats.py`); o `relative_stats.json` é regravado mesmo quando já existe e está completo. O `run.sh` montava `OVX_DATA` somente leitura | `d11431a`: montagem com escrita. O conteúdo regravado é o mesmo; o setup antigo já gravava esses arquivos |
 | 15 | `deepspeed...MissingCUDAException: CUDA_HOME does not exist, unable to compile CUDA op(s)`, a partir de `transformers.Trainer.__init__` → `accelerate.unwrap_model` → `import deepspeed` | o accelerate importa o deepspeed sempre que ele está instalado, **mesmo com 1 GPU**, quando o deepspeed nem é usado. Na importação, o deepspeed 0.17.1 verifica a compatibilidade de cada operação e roda `$CUDA_HOME/bin/nvcc -V`; a imagem não tem toolkit CUDA. O smoke não importava o deepspeed | **adaptação, sem rebuild**: `ovx/bin/cuda_home/bin/nvcc` responde só ao `-V` (release 13.0, o CUDA do torch) e o `gr00t_env` exporta `CUDA_HOME` para ele, sem sobrescrever um `CUDA_HOME` já definido. O check `model, trainer and server code` do smoke passou a importar o deepspeed. Reproduzido e verificado localmente com o mesmo `.sif` e `--nv`. A correção definitiva está na seção 12 |
+
+| 16 | no eval, `ValueError: Error: at least 4 vertices required`, `Element name 'TableTrolley_B02_01_vis'`, em `mujoco.py` `_setup_scene` → `mjSpec.compile()` | os meshes das cenas do SIMPLE estão no Git LFS. O host da OVX não tem `git-lfs`, então o clone ficou com os ponteiros, textos de ~130 bytes que o MuJoCo lê como um OBJ sem vértices. A imagem tem os arquivos (o `build.sh` recusa construir sem eles), mas o `run.sh` monta o clone por cima. O smoke não pega: o boot do Isaac não carrega cena | **sem mudança de código**: `rsync` dos 229 arquivos de uma máquina com o SIMPLE no mesmo commit, e `git update-index --skip-worktree` neles, para o git sem LFS não os ver como modificados. Conferido pelo `sha256` agregado contra o local. Procedimento no README, seção 3.1 |
+
+No job `7928`, o eval quebrou e mesmo assim o `validate.sbatch` registrou `eval=0`, porque o
+cliente terminou com código 0 depois do traceback (seção 12).
 
 **Limite da adaptação.** O `nvcc` falso não compila nada. Com 1 GPU, ou com várias e DDP, isso não
 importa: o deepspeed só é importado. Com mais de 1 GPU **sem** DDP, o GR00T usa o deepspeed ZeRO
@@ -466,15 +502,18 @@ mesmo (raiz somente leitura, `--nv`, `--cleanenv`); só o empacotamento difere.
 
 ## 9. O que NÃO foi testado
 
-- **Treino real até o fim** (a GPU de 8 GB não comporta o modelo de 3B). Na OVX, os dois primeiros
-  treinos caíram antes do primeiro passo (seção 7.3); o primeiro com as duas correções ainda não rodou.
-- **Servidor com checkpoint real** e **eval em malha fechada** (sem checkpoint nem dataset aqui).
-- **Na OVX, ainda falta**: múltiplas GPUs (com o deepspeed ZeRO, ver o limite em 7.3) e o
-  `apptainer pull` de repositório privado (o `.sif` foi levado por `rsync`). Já funcionaram lá:
-  SLURM, `/raid` e a cota, a internet do nó (HF e PyPI), a L40S, o Apptainer com `--nv`, o `.sif`, o
-  smoke inteiro e o treino até a montagem do Trainer.
-- **Downloads em tempo de execução**: Cosmos no HF, assets do SIMPLE (`USC-PSI-Lab/SIMPLE` no HF) e
-  assets remotos do Isaac.
+- **Na OVX, ainda falta**:
+  - múltiplas GPUs (com o deepspeed ZeRO, ver o limite em 7.3);
+  - o `apptainer pull` de repositório privado (o `.sif` foi levado por `rsync`);
+  - um eval com sucesso mensurável: os datasets de subtarefa só rodam na tarefa inteira, que dá 0;
+  - reproduzir um resultado dos especialistas.
+- **Já funcionou na OVX** (2026-11-27), com 1 L40S e o clone montado:
+  - SLURM, `/raid` e a cota, a internet do nó (HF e PyPI), o Apptainer com `--nv` e o `.sif`;
+  - o smoke inteiro;
+  - o treino até o fim, com os checkpoints salvos;
+  - o servidor com o checkpoint treinado e o eval de 1 episódio em malha fechada, com Isaac.
+  - Antes disso, na 4090/5080, o servidor já tinha rodado saudável com um checkpoint N1.7 real, em
+    malha fechada com o sim do IndustrialHumanoidSim.
 
 ---
 
@@ -568,6 +607,9 @@ sbatch -p <partição das L40> --time=01:00:00 ovx/slurm/eval.sbatch \
 | `not healthy after 900s` | carregamento lento ou travado | `server.log`; `--server-timeout` maior |
 | erro de índice / ações absurdas | layout de estado/ação do dataset ≠ agente | o agente `gr00t_n16_decoupled_wbc` assume robô com mãos (43 DOF) e o layout do `postprocess_psi0_sonic.py`; tarefas `G1FixedHand*` precisam de agente próprio |
 | robô agacha até cair | estado de torso | corrigido no SIMPLE `4bb2ff9`; confirme o commit do SIMPLE na imagem em `/opt/ovx/build-info.json` |
+| `at least 4 vertices required` ao montar a cena | arquivos do LFS do SIMPLE ausentes no clone (item 16) | README, seção 3.1 |
+| traceback no log, mas o job sai com 0 | o encerramento do Isaac engole o código de saída do cliente | a falta do `eval_stats.txt` na saída confirma a falha (seção 12) |
+| sucesso 0 com o robô fazendo a subtarefa | dataset de subtarefa avaliado na tarefa inteira | esperado: falta um critério de sucesso por subtarefa |
 | falha baixando assets do SIMPLE | nó sem internet (`USC-PSI-Lab/SIMPLE` no HF) | pré-popule `OVX_CACHE/simple_data` numa máquina com rede |
 | resultado ruim sem erro | `--sim-mode` diferente do renderizador dos vídeos de treino | `mujoco` para vídeos do MuJoCo, `mujoco_isaac` para vídeos do Isaac |
 
@@ -621,8 +663,24 @@ executa; use o truque do colchete (`pkill -f "[d]ocker buildx"`).
   como artefato, troca de dependência), ou antes do primeiro treino com várias GPUs sem DDP.
   Sozinho, não compensa: o build, o push de ~14 GB e um `.sif` novo na OVX, para trocar algo que
   funciona.
+- **O eval quebrado sai com código 0.** No job `7928`, o `eval-decoupled-wbc` levantou exceção no
+  `env.reset` e terminou com 0; o encerramento do Isaac, que roda depois, parece engolir o código.
+  `eval.sh`, `eval.sbatch` e `validate.sbatch` registram sucesso. Correção proposta, uma linha no fim
+  do `ovx/bin/eval.sh`:
+  ```bash
+  [ -s "${OUT}/eval_stats.txt" ] || die "the client wrote no eval_stats.txt -- see ${OUT}/eval_latest.log"
+  ```
+  O cliente grava uma linha no `eval_stats.txt` por episódio concluído. Até a correção entrar,
+  confira esse arquivo à mão.
+- **`git-lfs` no host da OVX.** Pedir ao admin acabaria com o `rsync` da seção 3.1 do README.
 - Agente de eval para as tarefas de mão fixa (`G1FixedHand*`).
-- `evals.example.tsv`: conferir o env id de cada dataset (o de `carry_totes` é palpite) e o `--sim-mode`.
+- **Eval dos especialistas de subtarefa.**
+  - Os env ids do `evals.example.tsv` são de tarefas de objeto único, outra cena.
+  - Os datasets `carry_totes`, `screwdrivers` e `screws` são cortes do `G1IndustrialSortingTeleop` e
+    só rodam nele, cujo sucesso mede a tarefa inteira (0 para uma subtarefa). O
+    `max_episode_steps` dele é 1200 (24 s), e a tarefa inteira precisa de uns 8000.
+  - Falta um critério de sucesso por subtarefa; a branch `origin/feat/gr00t-subtask-eval` trata disso.
+  - Também conferir o `--sim-mode`.
 - Estado de torso congelado nos agentes decoupled: correto para tarefas sem agachar (`rpy≈0`,
   altura 0,74); tarefas com cintura girando precisam da atualização por passo.
 - **Manifestos do `src/gr00t` e o editable install** (decisão adiada em 2026-09-16). Hoje a imagem
